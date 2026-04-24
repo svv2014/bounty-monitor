@@ -62,14 +62,8 @@ print(' '.join(str(i.get('number','')) for i in issues))
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 TIMELINE_JSON=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/timeline" --paginate 2>/dev/null || echo "[]")
 
-CI_STATUS="unknown"
-if gh pr checks "$PR_NUMBER" --json name,state 2>/dev/null | python3 -c "
-import sys,json
-checks=json.load(sys.stdin)
-failed=[c for c in checks if c.get('state','').upper() in ('FAILURE','ERROR')]
-print('failed' if failed else 'passed')
-" 2>/dev/null; then
-    CI_STATUS=$(gh pr checks "$PR_NUMBER" --json name,state 2>/dev/null | python3 -c "
+CHECKS_JSON=$(gh pr checks "$PR_NUMBER" --json name,state 2>/dev/null || echo "[]")
+CI_STATUS=$(printf '%s' "$CHECKS_JSON" | python3 -c "
 import sys,json
 checks=json.load(sys.stdin)
 if not checks:
@@ -79,7 +73,6 @@ elif any(c.get('state','').upper() in ('FAILURE','ERROR') for c in checks):
 else:
     print('passed')
 " 2>/dev/null || echo "unknown")
-fi
 
 # ---------------------------------------------------------------------------
 # 3. Determine outcome: clean / rework / qa-fail-rework / blocked
@@ -185,43 +178,46 @@ Write a verdict (2-3 sentences) explaining these scores. Do not add headers or b
 VERDICT_TEXT=$(claude --model "$CLAUDE_MODEL" -p "$VERDICT_PROMPT" 2>/dev/null || echo "Verdict generation failed; scores applied from scoring table based on outcome: ${OUTCOME}.")
 
 # ---------------------------------------------------------------------------
-# 7. POST JSON verdict to monitor API
+# 7. POST per-role verdict records to monitor API
 # ---------------------------------------------------------------------------
-TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%SZ')
-
-VERDICT_JSON=$(python3 -c "
-import json, sys
+_post_role() {
+    local role_name="$1" role_points="$2"
+    local role_json
+    role_json=$(VERDICT_TEXT="$VERDICT_TEXT" SLUG="$SLUG" \
+        ROLE_NAME="$role_name" ROLE_POINTS="$role_points" python3 -c "
+import os, json
 payload = {
-    'pr': int('${PR_NUMBER}'),
-    'slug': '${SLUG}',
-    'outcome': '${OUTCOME}',
-    'rework_cycles': int('${REWORK_COUNT}'),
-    'bounty_points': int('${BOUNTY_POINTS}'),
-    'bonus_each': int('${BONUS_EACH}'),
-    'scores': {
-        'planner': int('${SCORE_PLANNER}'),
-        'builder': int('${SCORE_BUILDER}'),
-        'reviewer': int('${SCORE_REVIEWER}'),
-        'tester': int('${SCORE_TESTER}'),
-    },
-    'verdict': '''${VERDICT_TEXT}''',
-    'timestamp': '${TIMESTAMP}',
+    'project': os.environ['SLUG'],
+    'role':    os.environ['ROLE_NAME'],
+    'points':  int(os.environ['ROLE_POINTS']),
+    'reason':  os.environ['VERDICT_TEXT'],
 }
 print(json.dumps(payload))
 ")
+    curl -sf \
+        --max-time 10 \
+        --connect-timeout 5 \
+        -X POST \
+        -H 'Content-Type: application/json' \
+        -d "$role_json" \
+        "${BOUNTY_MONITOR_URL}/api/verdict" \
+        >/dev/null 2>&1 || echo "Warning: could not reach bounty monitor at ${BOUNTY_MONITOR_URL}" >&2
+}
 
-curl -sf \
-    --max-time 10 \
-    --connect-timeout 5 \
-    -X POST \
-    -H 'Content-Type: application/json' \
-    -d "$VERDICT_JSON" \
-    "${BOUNTY_MONITOR_URL}/api/verdict" \
-    >/dev/null 2>&1 || echo "Warning: could not reach bounty monitor at ${BOUNTY_MONITOR_URL}" >&2
+_post_role planner  "$SCORE_PLANNER"
+_post_role builder  "$SCORE_BUILDER"
+_post_role reviewer "$SCORE_REVIEWER"
+_post_role tester   "$SCORE_TESTER"
 
 # ---------------------------------------------------------------------------
 # 8. Post bounty summary as PR comment
 # ---------------------------------------------------------------------------
+_fmt_score() { [ "$1" -gt 0 ] 2>/dev/null && echo "+$1" || echo "$1"; }
+DISPLAY_PLANNER=$(_fmt_score "$SCORE_PLANNER")
+DISPLAY_BUILDER=$(_fmt_score "$SCORE_BUILDER")
+DISPLAY_REVIEWER=$(_fmt_score "$SCORE_REVIEWER")
+DISPLAY_TESTER=$(_fmt_score "$SCORE_TESTER")
+
 BOUNTY_LINE=""
 if [ "$BOUNTY_POINTS" -gt 0 ] && [ "$OUTCOME" = "clean" ]; then
     BOUNTY_LINE="
@@ -234,10 +230,10 @@ ${VERDICT_TEXT}
 
 | Role | Score |
 |------|-------|
-| Planner | ${SCORE_PLANNER:+}${SCORE_PLANNER} |
-| Builder | ${SCORE_BUILDER:+}${SCORE_BUILDER} |
-| Reviewer | ${SCORE_REVIEWER:+}${SCORE_REVIEWER} |
-| Tester | ${SCORE_TESTER:+}${SCORE_TESTER} |
+| Planner | ${DISPLAY_PLANNER} |
+| Builder | ${DISPLAY_BUILDER} |
+| Reviewer | ${DISPLAY_REVIEWER} |
+| Tester | ${DISPLAY_TESTER} |
 ${BOUNTY_LINE}
 _Rework cycles: ${REWORK_COUNT} · CI: ${CI_STATUS} · Outcome: ${OUTCOME}_"
 
