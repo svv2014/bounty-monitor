@@ -539,24 +539,16 @@
   }
 
   // ── Render verdicts ──
-  function renderVerdicts(feed) {
-    // We don't have a dedicated /api/verdicts endpoint; derive from feed where event_type indicates a verdict,
-    // or fetch /api/board which has aggregated data. For individual verdicts, use feed items of type 'verdict'.
-    // Show verdict-type feed events, falling back to empty state if none.
-    const verdictItems = feed.filter(f => {
-      const k = (f.event_type || '').toLowerCase();
-      return k.includes('verdict') || k.includes('judge') || k.includes('score');
-    });
-
+  function renderVerdicts(verdicts) {
     const list = document.getElementById('verdict-list');
-    if (!verdictItems.length) {
+    if (!verdicts.length) {
       list.innerHTML = '<div class="empty-state">No verdicts yet</div>';
       return;
     }
-    list.innerHTML = verdictItems.map(item => {
+    list.innerHTML = verdicts.map(item => {
       const role = (item.role || '').charAt(0).toUpperCase() + (item.role || '').slice(1);
-      const pts = item.payload && item.payload.points != null ? item.payload.points : null;
-      const reason = item.payload && item.payload.reason ? item.payload.reason : null;
+      const pts = item.points != null ? item.points : null;
+      const reason = item.reason || null;
       const ptsClass = pts == null ? 'zero' : pts > 0 ? 'pos' : pts < 0 ? 'neg' : 'zero';
       const ptsLabel = pts == null ? '?' : (pts >= 0 ? '+' + pts : pts) + ' pts';
       return `
@@ -575,18 +567,20 @@
   // ── Fetch all data ──
   async function fetchAll() {
     try {
-      const [boardRes, feedRes, statusRes] = await Promise.all([
+      const [boardRes, feedRes, statusRes, verdictsRes] = await Promise.all([
         fetch('/api/board'),
         fetch('/api/feed'),
         fetch('/api/status'),
+        fetch('/api/verdicts'),
       ]);
 
-      if (!boardRes.ok || !feedRes.ok || !statusRes.ok) return;
+      if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok) return;
 
-      const [board, feed, status] = await Promise.all([
+      const [board, feed, status, verdicts] = await Promise.all([
         boardRes.json(),
         feedRes.json(),
         statusRes.json(),
+        verdictsRes.json(),
       ]);
 
       // Update agent status map
@@ -598,7 +592,7 @@
       renderBoard(board);
       renderAgents();
       renderFeed(feed);
-      renderVerdicts(feed);
+      renderVerdicts(verdicts);
 
       document.getElementById('last-update').textContent = 'Updated ' + timeAgo(new Date().toISOString());
     } catch (e) {

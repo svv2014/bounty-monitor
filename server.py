@@ -188,4 +188,14 @@ def status():
     return result
 
 
+@app.get("/api/verdicts")
+def get_verdicts():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, project, role, model, points, reason, created_at FROM verdicts ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
