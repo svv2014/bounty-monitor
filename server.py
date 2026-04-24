@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, Any
 
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 DB_PATH = "bounty.db"
@@ -185,3 +186,6 @@ def status():
             entry["payload"] = json.loads(entry["payload"])
         result.append(entry)
     return result
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
