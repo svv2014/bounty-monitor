@@ -1,0 +1,54 @@
+server:
+  host: "127.0.0.1"
+  port: 18792
+  db_path: "bounty.db"
+
+# Define which roles appear as cards on the dashboard.
+# Any string is valid — these are display hints only.
+# The API accepts ANY role string regardless of this list.
+scoring:
+  roles:
+    - planner
+    - builder
+    - reviewer
+    - tester
+    - reviser
+    - merger
+
+  # Points awarded per role per outcome (used by judge scripts)
+  outcomes:
+    clean:
+      planner: 3
+      builder: 5
+      reviewer: 3
+      tester: 2
+    rework:
+      planner: 3
+      builder: 2
+      reviewer: 4
+      tester: 2
+    qa-fail-rework:
+      planner: 3
+      builder: 1
+      reviewer: 1
+      tester: 3
+    blocked:
+      planner: -1
+      builder: -3
+      reviewer: 0
+      tester: 0
+
+penalties:
+  # Extra deductions applied on top of outcome scores (optional)
+  repeated_rework_threshold: 3   # cycles before extra penalty
+  extra_deduction: -1            # applied to builder per threshold crossed
+
+bonuses:
+  # Bounty bonus from linked issue "## Bounty: N points" is split evenly
+  # across roles listed in scoring.roles when outcome is clean.
+  split: even
+
+retention:
+  # How many events/verdicts to keep in the feed (API limit)
+  feed_limit: 50
+  verdict_limit: 50

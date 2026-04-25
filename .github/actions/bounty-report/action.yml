@@ -1,0 +1,55 @@
+name: Bounty Report
+description: Fire-and-forget POST to a Bounty Monitor server from a GitHub Actions workflow.
+
+inputs:
+  project:
+    description: Project slug (e.g. repo name or ASDLC_SLUG)
+    required: true
+  role:
+    description: Agent role — any string (builder, reviewer, deployer, …)
+    required: true
+  event_type:
+    description: Event type — any string (working, done, failed, …)
+    required: true
+  model:
+    description: Optional model identifier
+    required: false
+    default: ""
+  bounty_monitor_url:
+    description: Bounty Monitor base URL
+    required: false
+    default: "http://localhost:18792"
+
+runs:
+  using: composite
+  steps:
+    - name: Post bounty event
+      shell: bash
+      env:
+        BM_PROJECT: ${{ inputs.project }}
+        BM_ROLE: ${{ inputs.role }}
+        BM_EVENT_TYPE: ${{ inputs.event_type }}
+        BM_MODEL: ${{ inputs.model }}
+        BM_URL: ${{ inputs.bounty_monitor_url }}
+      run: |
+        PAYLOAD=$(python3 -c "
+        import json, os
+        d = {
+          'project': os.environ['BM_PROJECT'],
+          'role':    os.environ['BM_ROLE'],
+          'event_type': os.environ['BM_EVENT_TYPE'],
+        }
+        model = os.environ.get('BM_MODEL', '')
+        if model:
+            d['model'] = model
+        print(json.dumps(d))
+        ")
+
+        curl -sf \
+          --max-time 3 \
+          --connect-timeout 2 \
+          -X POST \
+          -H 'Content-Type: application/json' \
+          -d "$PAYLOAD" \
+          "${BM_URL}/api/report" \
+          >/dev/null 2>&1 || true
