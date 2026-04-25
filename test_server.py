@@ -281,3 +281,20 @@ def test_queue_priority_field(isolated_client):
     item = next(i for i in data if i["ref"] == "99")
     assert item["priority"] == 3
     assert item["title"] == "Critical"
+
+
+def test_queue_assigned_role_field(isolated_client):
+    server._insert_queue_snapshot(server.QueueSnapshot(
+        project="proj-r",
+        items=[
+            server.QueueItem(ref="20", status="in-flight", priority=1, title="In progress", assigned_role="builder"),
+            server.QueueItem(ref="21", status="queued", priority=0, title="Pending"),
+        ],
+    ))
+    resp = isolated_client.get("/api/queue")
+    assert resp.status_code == 200
+    data = resp.json()
+    in_flight = next(i for i in data if i["ref"] == "20")
+    queued = next(i for i in data if i["ref"] == "21")
+    assert in_flight["assigned_role"] == "builder"
+    assert queued["assigned_role"] is None

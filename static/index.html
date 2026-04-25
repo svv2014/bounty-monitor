@@ -783,15 +783,16 @@
       const wait = timeAgo(item.created_at);
       const refDisplay = item.ref ? `#${item.ref}` : '—';
       const titleHtml = item.title ? `<div class="queue-item-title">${escHtml(item.title)}</div>` : '';
-      const refHtml = item.url
+      const refHtml = item.url && item.url.startsWith('http')
         ? `<a href="${escHtml(item.url)}" target="_blank" rel="noopener">${escHtml(refDisplay)}</a>`
         : escHtml(refDisplay);
+      const roleHtml = item.assigned_role ? `<span style="color:var(--accent);font-weight:600"> · ${escHtml(item.assigned_role)}</span>` : '';
       return `
         <div class="queue-item">
           <div class="queue-item-left">
             <div class="queue-item-ref">${refHtml}</div>
             ${titleHtml}
-            <div class="queue-item-meta">${escHtml(item.project || '')}</div>
+            <div class="queue-item-meta">${escHtml(item.project || '')}${roleHtml}</div>
           </div>
           <div class="queue-item-right">
             <span class="priority-badge ${pr.cls}">${pr.text}</span>

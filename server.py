@@ -87,6 +87,7 @@ def init_db():
             priority INTEGER NOT NULL DEFAULT 0,
             title TEXT,
             url TEXT,
+            assigned_role TEXT,
             created_at TEXT NOT NULL
         );
     """)
@@ -130,6 +131,7 @@ class QueueItem(BaseModel):
     priority: int = 0
     title: Optional[str] = None
     url: Optional[str] = None
+    assigned_role: Optional[str] = None
 
 
 class QueueSnapshot(BaseModel):
@@ -244,8 +246,8 @@ def _insert_queue_snapshot(data: QueueSnapshot):
 
     for item in data.items:
         conn.execute(
-            "INSERT INTO work_queue (project, ref, status, priority, title, url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (data.project, item.ref, item.status, item.priority, item.title, item.url, now),
+            "INSERT INTO work_queue (project, ref, status, priority, title, url, assigned_role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (data.project, item.ref, item.status, item.priority, item.title, item.url, item.assigned_role, now),
         )
     conn.commit()
     conn.close()
@@ -275,12 +277,12 @@ def get_queue(project: Optional[str] = Query(default=None)):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     if project:
         rows = conn.execute(
-            "SELECT id, project, ref, status, priority, title, url, created_at FROM work_queue WHERE created_at >= ? AND project = ? ORDER BY priority DESC, created_at ASC",
+            "SELECT id, project, ref, status, priority, title, url, assigned_role, created_at FROM work_queue WHERE created_at >= ? AND project = ? ORDER BY priority DESC, created_at ASC",
             (cutoff, project),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT id, project, ref, status, priority, title, url, created_at FROM work_queue WHERE created_at >= ? ORDER BY priority DESC, created_at ASC",
+            "SELECT id, project, ref, status, priority, title, url, assigned_role, created_at FROM work_queue WHERE created_at >= ? ORDER BY priority DESC, created_at ASC",
             (cutoff,),
         ).fetchall()
     conn.close()

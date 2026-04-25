@@ -50,9 +50,11 @@ scan_project() {
         2>/dev/null || echo "[]")
 
     # Build items JSON array via python3
-    local items_json
-    items_json=$(python3 - "$project" <<'PYEOF'
-import sys, json, os
+    # Write the script to a temp file so stdin is free for issues_json piped in.
+    local _py_tmp
+    _py_tmp=$(mktemp /tmp/scanner_XXXXXX.py)
+    cat > "$_py_tmp" <<'PYEOF'
+import sys, json
 
 project = sys.argv[1]
 raw = sys.stdin.read().strip()
@@ -93,7 +95,9 @@ for issue in issues:
 
 print(json.dumps(items))
 PYEOF
-<<< "$issues_json")
+    local items_json
+    items_json=$(echo "$issues_json" | python3 "$_py_tmp" "$project")
+    rm -f "$_py_tmp"
 
     # Post snapshot to bounty monitor (fire-and-forget)
     bounty_report_queue "$project" "$items_json"
