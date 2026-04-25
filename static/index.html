@@ -389,10 +389,12 @@
 </main>
 
 <script>
-  const ROLES = ['Planner', 'Builder', 'Reviewer', 'Tester', 'Reviser'];
+  // ROLES is populated dynamically: config roles + any active roles seen in /api/status
+  let ROLES = [];
 
   const ROLE_EMOJI = {
     planner: '🗺️', builder: '🔨', reviewer: '🔍', tester: '🧪', reviser: '✏️',
+    merger: '🔀', deployer: '🚀', triage: '🔎',
   };
 
   const EVENT_EMOJI = {
@@ -567,11 +569,12 @@
   // ── Fetch all data ──
   async function fetchAll() {
     try {
-      const [boardRes, feedRes, statusRes, verdictsRes] = await Promise.all([
+      const [boardRes, feedRes, statusRes, verdictsRes, cfgRes] = await Promise.all([
         fetch('/api/board'),
         fetch('/api/feed'),
         fetch('/api/status'),
         fetch('/api/verdicts'),
+        fetch('/api/config/roles'),
       ]);
 
       if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok) return;
@@ -582,6 +585,25 @@
         statusRes.json(),
         verdictsRes.json(),
       ]);
+
+      // Merge config roles with any roles seen in the live status feed
+      const configRoles = cfgRes.ok ? ((await cfgRes.json()).roles || []) : [];
+      const activeRoles = status.map(e => (e.role || '').toLowerCase()).filter(Boolean);
+      const seen = new Set([...configRoles.map(r => r.toLowerCase()), ...activeRoles]);
+      // Rebuild ROLES as display-cased list, config order first, then extras
+      const ordered = [
+        ...configRoles.map(r => r.charAt(0).toUpperCase() + r.slice(1)),
+        ...activeRoles
+          .filter(r => !configRoles.map(x => x.toLowerCase()).includes(r))
+          .map(r => r.charAt(0).toUpperCase() + r.slice(1)),
+      ];
+      // Deduplicate (case-insensitive)
+      const dedupRoles = [];
+      const seenLower = new Set();
+      for (const r of ordered) {
+        if (!seenLower.has(r.toLowerCase())) { dedupRoles.push(r); seenLower.add(r.toLowerCase()); }
+      }
+      if (dedupRoles.length > 0) ROLES = dedupRoles;
 
       // Update agent status map
       agentStatus = {};

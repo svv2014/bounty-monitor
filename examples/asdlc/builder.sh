@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/bounty.sh
-source "$SCRIPT_DIR/lib/bounty.sh"
+# shellcheck source=../../lib/bounty.sh
+source "$SCRIPT_DIR/../../lib/bounty.sh"
 
 SLUG="${ASDLC_SLUG:-}"
 REF="${ASDLC_ISSUE_NUMBER:-}"
