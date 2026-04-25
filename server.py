@@ -280,8 +280,72 @@ def get_verdicts():
     return [dict(r) for r in rows]
 
 
+@app.get("/api/history")
+def get_history():
+    conn = get_db()
+    run_rows = conn.execute("""
+        SELECT
+            project,
+            MIN(created_at) AS first_event,
+            MAX(created_at) AS last_event,
+            COUNT(*) AS event_count,
+            SUM(CASE WHEN event_type LIKE '%rework%' OR event_type LIKE '%retry%' THEN 1 ELSE 0 END) AS rework_count,
+            SUM(CASE WHEN event_type LIKE '%done%' OR event_type LIKE '%complete%' OR event_type LIKE '%finish%' THEN 1 ELSE 0 END) AS done_count
+        FROM events
+        GROUP BY project
+        ORDER BY MAX(id) DESC
+    """).fetchall()
+    top_agent = conn.execute(
+        "SELECT role FROM scores GROUP BY role ORDER BY SUM(total_points) DESC LIMIT 1"
+    ).fetchone()
+    top_model = conn.execute(
+        "SELECT model FROM scores WHERE model IS NOT NULL GROUP BY model ORDER BY SUM(total_points) DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+
+    runs = []
+    for r in run_rows:
+        row = dict(r)
+        first, last = row["first_event"], row["last_event"]
+        duration = None
+        if first and last:
+            try:
+                dt1 = datetime.fromisoformat(first.replace("Z", "+00:00"))
+                dt2 = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                duration = int((dt2 - dt1).total_seconds())
+            except Exception:
+                pass
+        runs.append({
+            "project": row["project"],
+            "first_event": first,
+            "last_event": last,
+            "event_count": row["event_count"],
+            "has_rework": row["rework_count"] > 0,
+            "is_done": row["done_count"] > 0,
+            "duration_seconds": duration,
+        })
+
+    total = len(runs)
+    done_total = sum(1 for r in runs if r["is_done"])
+    rework_total = sum(1 for r in runs if r["has_rework"])
+    done_durations = [r["duration_seconds"] for r in runs if r["is_done"] and r["duration_seconds"] is not None]
+    avg_duration = int(sum(done_durations) / len(done_durations)) if done_durations else None
+
+    return {
+        "runs": runs,
+        "stats": {
+            "total_runs": total,
+            "success_rate": round(done_total / total * 100, 1) if total > 0 else 0.0,
+            "avg_time_to_merge_seconds": avg_duration,
+            "rework_rate": round(rework_total / total * 100, 1) if total > 0 else 0.0,
+            "top_agent": top_agent["role"] if top_agent else None,
+            "top_model": top_model["model"] if top_model else None,
+        },
+    }
+
+
 @app.get("/api/history/{project}/{issue}")
-def get_history(project: str, issue: int):
+def get_issue_history(project: str, issue: int):
     conn = get_db()
     rows = conn.execute(
         """SELECT id, project, issue_number, pr_number, role, event_type, agent, model,
@@ -293,6 +357,23 @@ def get_history(project: str, issue: int):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/history/{project:path}")
+def get_project_history(project: str):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, role, model, event_type, payload, created_at FROM events WHERE project=? ORDER BY id ASC",
+        (project,),
+    ).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        entry = dict(r)
+        if entry["payload"]:
+            entry["payload"] = json.loads(entry["payload"])
+        result.append(entry)
+    return result
 
 
 @app.get("/api/runs")

@@ -71,7 +71,46 @@
       50% { opacity: 0.3; }
     }
 
-    main {
+    /* ── Page-level nav ── */
+    .page-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+    }
+
+    .page-nav-btn {
+      padding: 10px 18px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: -1px;
+    }
+
+    .page-nav-btn:hover { color: var(--text); }
+
+    .page-nav-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .page-content { display: none; }
+    .page-content.active { display: block; }
+
+    /* ── Dashboard page (existing grid) ── */
+    #page-dashboard {
+      flex: 1;
+    }
+
+    #page-dashboard main {
       flex: 1;
       padding: 24px;
       display: grid;
@@ -325,13 +364,281 @@
       padding: 16px;
     }
 
+    /* ── History page ── */
+    #page-history {
+      padding: 24px;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Stats cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .stat-value.accent { color: var(--accent2); }
+
+    .stat-sub {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* History controls */
+    .history-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .history-controls label {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .history-controls select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.72rem;
+      padding: 5px 8px;
+      cursor: pointer;
+    }
+
+    .history-controls select:focus { outline: 1px solid var(--accent); }
+
+    /* Run history table */
+    .history-wrapper {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    .history-table th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .history-table th:hover { color: var(--text); }
+
+    .history-table th.sorted { color: var(--accent); }
+
+    .sort-arrow { margin-left: 4px; font-size: 0.6rem; }
+
+    .history-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .history-table tr.run-row:hover td { background: var(--surface2); }
+
+    .history-table tr.run-row { cursor: pointer; }
+
+    .run-project {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.8rem;
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .run-status {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .run-status.done { background: #0d2e20; color: var(--green); }
+    .run-status.in-progress { background: #22254a; color: #818cf8; }
+    .run-status.unknown { background: #1f2435; color: var(--muted); }
+
+    .rework-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .rework-badge.yes { background: #2d1f0e; color: var(--yellow); }
+    .rework-badge.no  { background: #1f2435; color: var(--muted); }
+
+    .expand-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .expand-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .expand-btn.open { border-color: var(--accent); color: var(--accent); background: #1a1b3a; }
+
+    /* Timeline rows */
+    .timeline-row { display: none; }
+    .timeline-row.open { display: table-row; }
+
+    .timeline-cell {
+      padding: 0 !important;
+      border-bottom: 1px solid var(--border) !important;
+    }
+
+    .timeline-inner {
+      padding: 12px 16px 16px 48px;
+      background: #111520;
+    }
+
+    .timeline-title {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .timeline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+    }
+
+    .timeline-list::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 8px;
+      bottom: 8px;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .timeline-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 6px 0;
+      position: relative;
+    }
+
+    .timeline-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      border: 2px solid var(--surface);
+      flex-shrink: 0;
+      margin-top: 4px;
+      position: relative;
+      z-index: 1;
+      margin-left: 7px;
+    }
+
+    .timeline-dot.done-dot { background: var(--green); }
+    .timeline-dot.rework-dot { background: var(--yellow); }
+    .timeline-dot.error-dot { background: var(--red); }
+    .timeline-dot.start-dot { background: var(--accent); }
+
+    .timeline-body { flex: 1; min-width: 0; }
+
+    .timeline-event {
+      font-size: 0.77rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .timeline-role {
+      color: var(--accent);
+      font-size: 0.72rem;
+    }
+
+    .timeline-detail {
+      color: var(--muted);
+      font-size: 0.7rem;
+      margin-top: 2px;
+      word-break: break-word;
+    }
+
+    .timeline-time {
+      font-size: 0.65rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      margin-top: 4px;
+    }
+
+    .timeline-loading {
+      padding: 8px 0;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
     @media (max-width: 900px) {
-      main {
+      #page-dashboard main {
         grid-template-columns: 1fr;
         grid-template-rows: auto;
       }
       #board-section { grid-column: 1; grid-row: 3; }
       #bottom-section { grid-column: 1; grid-row: 2; grid-template-columns: 1fr; }
+
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .history-controls { gap: 6px; }
     }
   </style>
 </head>
@@ -345,48 +652,106 @@
   </div>
 </header>
 
-<main>
-  <!-- Agent cards -->
-  <section id="agents-section">
-    <div class="section-title">Agent Status</div>
-    <div class="agent-grid" id="agent-grid"></div>
-  </section>
+<nav class="page-nav">
+  <button class="page-nav-btn active" data-page="dashboard">Dashboard</button>
+  <button class="page-nav-btn" data-page="history">History</button>
+</nav>
 
-  <!-- Leaderboard sidebar -->
-  <section id="board-section">
-    <div class="board-wrapper">
-      <div class="section-title" style="margin-bottom:8px;">Leaderboard</div>
-      <div class="board-tabs">
-        <button class="tab-btn active" data-tab="by-role">By Role</button>
-        <button class="tab-btn" data-tab="by-model">By Model</button>
+<!-- ══════════════════════════ DASHBOARD PAGE ══════════════════════════ -->
+<div id="page-dashboard" class="page-content active">
+  <main>
+    <!-- Agent cards -->
+    <section id="agents-section">
+      <div class="section-title">Agent Status</div>
+      <div class="agent-grid" id="agent-grid"></div>
+    </section>
+
+    <!-- Leaderboard sidebar -->
+    <section id="board-section">
+      <div class="board-wrapper">
+        <div class="section-title" style="margin-bottom:8px;">Leaderboard</div>
+        <div class="board-tabs">
+          <button class="tab-btn active" data-tab="by-role">By Role</button>
+          <button class="tab-btn" data-tab="by-model">By Model</button>
+        </div>
+        <div id="by-role" class="board-panel active">
+          <table class="board-table">
+            <thead><tr><th>#</th><th>Role</th><th>Verdicts</th><th>Pts</th></tr></thead>
+            <tbody id="board-role-body"></tbody>
+          </table>
+        </div>
+        <div id="by-model" class="board-panel">
+          <table class="board-table">
+            <thead><tr><th>#</th><th>Model</th><th>Verdicts</th><th>Pts</th></tr></thead>
+            <tbody id="board-model-body"></tbody>
+          </table>
+        </div>
       </div>
-      <div id="by-role" class="board-panel active">
-        <table class="board-table">
-          <thead><tr><th>#</th><th>Role</th><th>Verdicts</th><th>Pts</th></tr></thead>
-          <tbody id="board-role-body"></tbody>
-        </table>
+    </section>
+
+    <!-- Activity feed + verdicts -->
+    <div id="bottom-section">
+      <div class="scroll-panel">
+        <div class="scroll-panel-header">Activity Feed</div>
+        <div class="scroll-inner" id="feed-list"></div>
       </div>
-      <div id="by-model" class="board-panel">
-        <table class="board-table">
-          <thead><tr><th>#</th><th>Model</th><th>Verdicts</th><th>Pts</th></tr></thead>
-          <tbody id="board-model-body"></tbody>
-        </table>
+      <div class="scroll-panel">
+        <div class="scroll-panel-header">Judge Verdicts</div>
+        <div class="scroll-inner" id="verdict-list"></div>
       </div>
     </div>
-  </section>
+  </main>
+</div>
 
-  <!-- Activity feed + verdicts -->
-  <div id="bottom-section">
-    <div class="scroll-panel">
-      <div class="scroll-panel-header">Activity Feed</div>
-      <div class="scroll-inner" id="feed-list"></div>
+<!-- ══════════════════════════ HISTORY PAGE ══════════════════════════ -->
+<div id="page-history" class="page-content">
+  <div style="padding:24px;max-width:1400px;width:100%;margin:0 auto;">
+    <!-- Stats cards -->
+    <div class="section-title">Run Statistics</div>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-label">Total Runs</div><div class="stat-value accent" id="stat-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Success Rate</div><div class="stat-value" id="stat-success">—</div><div class="stat-sub">runs with done event</div></div>
+      <div class="stat-card"><div class="stat-label">Avg Time to Merge</div><div class="stat-value" id="stat-avg-time">—</div><div class="stat-sub">completed runs only</div></div>
+      <div class="stat-card"><div class="stat-label">Rework Rate</div><div class="stat-value" id="stat-rework">—</div><div class="stat-sub">runs with rework</div></div>
+      <div class="stat-card"><div class="stat-label">Top Agent</div><div class="stat-value" id="stat-top-agent" style="font-size:1rem">—</div></div>
+      <div class="stat-card"><div class="stat-label">Top Model</div><div class="stat-value" id="stat-top-model" style="font-size:0.85rem;word-break:break-all">—</div></div>
     </div>
-    <div class="scroll-panel">
-      <div class="scroll-panel-header">Judge Verdicts</div>
-      <div class="scroll-inner" id="verdict-list"></div>
+
+    <!-- Controls -->
+    <div class="history-controls">
+      <label for="filter-status">Status:</label>
+      <select id="filter-status">
+        <option value="all">All</option>
+        <option value="done">Done</option>
+        <option value="in-progress">In Progress</option>
+      </select>
+      <label for="filter-rework">Rework:</label>
+      <select id="filter-rework">
+        <option value="all">All</option>
+        <option value="yes">Has Rework</option>
+        <option value="no">No Rework</option>
+      </select>
+    </div>
+
+    <!-- Run table -->
+    <div class="history-wrapper">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th data-sort="project">Project <span class="sort-arrow"></span></th>
+            <th data-sort="event_count">Events <span class="sort-arrow"></span></th>
+            <th data-sort="duration_seconds">Duration <span class="sort-arrow"></span></th>
+            <th>Status</th>
+            <th>Rework</th>
+            <th data-sort="first_event">Started <span class="sort-arrow"></span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody"></tbody>
+      </table>
     </div>
   </div>
-</main>
+</div>
 
 <script>
   const ROLES = ['Planner', 'Builder', 'Reviewer', 'Tester', 'Reviser'];
@@ -435,9 +800,24 @@
     return model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
   }
 
+  function fmtDuration(seconds) {
+    if (seconds == null) return '—';
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h ${m}m`;
+  }
+
   // ── State ──
-  let agentScores = {};   // role -> total_points (from board)
-  let agentStatus = {};   // role -> latest event entry
+  let agentScores = {};
+  let agentStatus = {};
+  let historyRuns = [];
+  let historyStats = {};
+  let historySortKey = 'first_event';
+  let historySortDir = -1; // -1 = desc, 1 = asc
+  let expandedProjects = new Set();
+  let timelineCache = {};
 
   // ── Render agents ──
   function renderAgents() {
@@ -468,7 +848,6 @@
 
   // ── Render leaderboard ──
   function renderBoard(data) {
-    // By role
     const byRole = {};
     for (const row of data) {
       const k = (row.role || '').toLowerCase();
@@ -477,7 +856,6 @@
       byRole[k].verdicts += row.verdict_count;
     }
     const roleRows = Object.values(byRole).sort((a, b) => b.pts - a.pts);
-    // Store for agent cards
     agentScores = {};
     for (const r of roleRows) agentScores[(r.role || '').toLowerCase()] = r.pts;
 
@@ -491,7 +869,6 @@
       </tr>
     `).join('') : '<tr><td colspan="4" class="empty-state">No data yet</td></tr>';
 
-    // By model
     const byModel = {};
     for (const row of data) {
       const k = row.model || '(unknown)';
@@ -564,6 +941,184 @@
     }).join('');
   }
 
+  // ── Render history stats ──
+  function renderHistoryStats(stats) {
+    document.getElementById('stat-total').textContent = stats.total_runs ?? '0';
+    document.getElementById('stat-success').textContent = stats.total_runs > 0 ? (stats.success_rate + '%') : '—';
+    document.getElementById('stat-avg-time').textContent = stats.avg_time_to_merge_seconds != null
+      ? fmtDuration(stats.avg_time_to_merge_seconds)
+      : '—';
+    document.getElementById('stat-rework').textContent = stats.total_runs > 0 ? (stats.rework_rate + '%') : '—';
+    document.getElementById('stat-top-agent').textContent = stats.top_agent
+      ? ((stats.top_agent.charAt(0).toUpperCase() + stats.top_agent.slice(1)))
+      : '—';
+    document.getElementById('stat-top-model').textContent = stats.top_model
+      ? shortModel(stats.top_model)
+      : '—';
+  }
+
+  // ── Render history table ──
+  function renderHistoryTable() {
+    const filterStatus = document.getElementById('filter-status').value;
+    const filterRework = document.getElementById('filter-rework').value;
+
+    let rows = historyRuns.slice();
+
+    // Filter
+    if (filterStatus === 'done') rows = rows.filter(r => r.is_done);
+    else if (filterStatus === 'in-progress') rows = rows.filter(r => !r.is_done);
+    if (filterRework === 'yes') rows = rows.filter(r => r.has_rework);
+    else if (filterRework === 'no') rows = rows.filter(r => !r.has_rework);
+
+    // Sort
+    rows.sort((a, b) => {
+      let av = a[historySortKey], bv = b[historySortKey];
+      if (av == null) av = historySortDir === 1 ? Infinity : -Infinity;
+      if (bv == null) bv = historySortDir === 1 ? Infinity : -Infinity;
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return -historySortDir;
+      if (av > bv) return historySortDir;
+      return 0;
+    });
+
+    // Update sort arrows
+    document.querySelectorAll('.history-table th[data-sort]').forEach(th => {
+      const arrow = th.querySelector('.sort-arrow');
+      if (th.dataset.sort === historySortKey) {
+        th.classList.add('sorted');
+        arrow.textContent = historySortDir === 1 ? '▲' : '▼';
+      } else {
+        th.classList.remove('sorted');
+        arrow.textContent = '';
+      }
+    });
+
+    const tbody = document.getElementById('history-tbody');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No runs yet</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(run => {
+      const statusClass = run.is_done ? 'done' : 'in-progress';
+      const statusLabel = run.is_done ? 'Done' : 'In Progress';
+      const isOpen = expandedProjects.has(run.project);
+      const projId = 'tl-' + btoa(encodeURIComponent(run.project)).replace(/[^a-zA-Z0-9]/g, '');
+      return `
+        <tr class="run-row" data-project="${escHtml(run.project)}">
+          <td><div class="run-project" title="${escHtml(run.project)}">${escHtml(run.project)}</div></td>
+          <td style="color:var(--muted)">${run.event_count}</td>
+          <td style="color:var(--muted)">${fmtDuration(run.duration_seconds)}</td>
+          <td><span class="run-status ${statusClass}">${statusLabel}</span></td>
+          <td><span class="rework-badge ${run.has_rework ? 'yes' : 'no'}">${run.has_rework ? '🔄 Yes' : 'No'}</span></td>
+          <td style="color:var(--muted);white-space:nowrap">${escHtml(timeAgo(run.first_event))}</td>
+          <td><button class="expand-btn ${isOpen ? 'open' : ''}" data-project="${escHtml(run.project)}">${isOpen ? '▲ Hide' : '▼ Show'}</button></td>
+        </tr>
+        <tr class="timeline-row ${isOpen ? 'open' : ''}" id="${projId}">
+          <td class="timeline-cell" colspan="7">
+            <div class="timeline-inner" id="${projId}-inner">
+              <div class="timeline-loading">Loading timeline…</div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Re-render any already-expanded timelines from cache
+    for (const project of expandedProjects) {
+      if (timelineCache[project]) {
+        const projId = 'tl-' + btoa(encodeURIComponent(project)).replace(/[^a-zA-Z0-9]/g, '');
+        const inner = document.getElementById(projId + '-inner');
+        if (inner) renderTimeline(inner, timelineCache[project]);
+      }
+    }
+
+    // Attach expand button listeners
+    document.querySelectorAll('.expand-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleTimeline(btn.dataset.project);
+      });
+    });
+
+    // Row click also toggles
+    document.querySelectorAll('.run-row').forEach(row => {
+      row.addEventListener('click', () => toggleTimeline(row.dataset.project));
+    });
+  }
+
+  function toggleTimeline(project) {
+    const projId = 'tl-' + btoa(encodeURIComponent(project)).replace(/[^a-zA-Z0-9]/g, '');
+    const tlRow = document.getElementById(projId);
+    const btn = document.querySelector(`.expand-btn[data-project="${CSS.escape(project)}"]`);
+    const inner = document.getElementById(projId + '-inner');
+    if (!tlRow) return;
+
+    if (expandedProjects.has(project)) {
+      expandedProjects.delete(project);
+      tlRow.classList.remove('open');
+      if (btn) { btn.classList.remove('open'); btn.textContent = '▼ Show'; }
+    } else {
+      expandedProjects.add(project);
+      tlRow.classList.add('open');
+      if (btn) { btn.classList.add('open'); btn.textContent = '▲ Hide'; }
+      if (timelineCache[project]) {
+        renderTimeline(inner, timelineCache[project]);
+      } else {
+        fetch('/api/history/' + encodeURIComponent(project))
+          .then(r => r.json())
+          .then(events => {
+            timelineCache[project] = events;
+            if (expandedProjects.has(project) && inner) {
+              renderTimeline(inner, events);
+            }
+          })
+          .catch(() => {
+            if (inner) inner.innerHTML = '<div class="timeline-loading">Failed to load timeline.</div>';
+          });
+      }
+    }
+  }
+
+  function dotClass(eventType) {
+    const k = (eventType || '').toLowerCase();
+    if (k.includes('done') || k.includes('complete') || k.includes('finish')) return 'done-dot';
+    if (k.includes('rework') || k.includes('retry')) return 'rework-dot';
+    if (k.includes('error') || k.includes('fail')) return 'error-dot';
+    if (k.includes('start')) return 'start-dot';
+    return '';
+  }
+
+  function renderTimeline(container, events) {
+    if (!events.length) {
+      container.innerHTML = '<div class="timeline-loading">No events found.</div>';
+      return;
+    }
+    const items = events.map(ev => {
+      const role = (ev.role || '').charAt(0).toUpperCase() + (ev.role || '').slice(1);
+      const detail = ev.payload && typeof ev.payload === 'object' && ev.payload.task
+        ? ev.payload.task
+        : '';
+      const model = ev.model ? ` · ${escHtml(shortModel(ev.model))}` : '';
+      return `
+        <div class="timeline-item">
+          <div class="timeline-dot ${dotClass(ev.event_type)}"></div>
+          <div class="timeline-body">
+            <span class="timeline-event">${escHtml(ev.event_type)}</span>
+            <span class="timeline-role"> · <span style="color:var(--accent)">${escHtml(role)}</span>${model}</span>
+            ${detail ? `<div class="timeline-detail">${escHtml(detail)}</div>` : ''}
+          </div>
+          <div class="timeline-time">${escHtml(timeAgo(ev.created_at))}</div>
+        </div>
+      `;
+    }).join('');
+    container.innerHTML = `
+      <div class="timeline-title">Event Timeline (${events.length} events)</div>
+      <div class="timeline-list">${items}</div>
+    `;
+  }
+
   // ── Fetch all data ──
   async function fetchAll() {
     try {
@@ -583,7 +1138,6 @@
         verdictsRes.json(),
       ]);
 
-      // Update agent status map
       agentStatus = {};
       for (const entry of status) {
         agentStatus[(entry.role || '').toLowerCase()] = entry;
@@ -600,7 +1154,38 @@
     }
   }
 
-  // ── Tabs ──
+  // ── Fetch history ──
+  async function fetchHistory() {
+    try {
+      const res = await fetch('/api/history');
+      if (!res.ok) return;
+      const data = await res.json();
+      historyRuns = data.runs || [];
+      historyStats = data.stats || {};
+      renderHistoryStats(historyStats);
+      renderHistoryTable();
+      document.getElementById('last-update').textContent = 'Updated ' + timeAgo(new Date().toISOString());
+    } catch (e) {
+      console.error('History fetch error:', e);
+    }
+  }
+
+  // ── Active page tracking ──
+  let activePage = 'dashboard';
+
+  // ── Page-level navigation ──
+  document.querySelectorAll('.page-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.page-nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      activePage = btn.dataset.page;
+      document.getElementById('page-' + activePage).classList.add('active');
+      if (activePage === 'history') fetchHistory();
+    });
+  });
+
+  // ── Leaderboard tabs ──
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -610,14 +1195,36 @@
     });
   });
 
+  // ── History sort ──
+  document.querySelectorAll('.history-table th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      if (historySortKey === th.dataset.sort) {
+        historySortDir *= -1;
+      } else {
+        historySortKey = th.dataset.sort;
+        historySortDir = -1;
+      }
+      renderHistoryTable();
+    });
+  });
+
+  // ── History filters ──
+  document.getElementById('filter-status').addEventListener('change', renderHistoryTable);
+  document.getElementById('filter-rework').addEventListener('change', renderHistoryTable);
+
   // ── Utils ──
   function escHtml(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // ── Init ──
+  // ── Auto-refresh: always fetch dashboard data; fetch history if on history tab ──
+  function tick() {
+    fetchAll();
+    if (activePage === 'history') fetchHistory();
+  }
+
   fetchAll();
-  setInterval(fetchAll, 5000);
+  setInterval(tick, 5000);
 </script>
 </body>
 </html>

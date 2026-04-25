@@ -120,7 +120,7 @@ def test_api_verdicts_after_post(isolated_client):
 
 # ── issue_history and pipeline_runs tests ──
 
-def test_history_empty(isolated_client):
+def test_issue_history_empty(isolated_client):
     response = isolated_client.get("/api/history/proj-x/42")
     assert response.status_code == 200
     assert response.json() == []
@@ -214,3 +214,62 @@ def test_pipeline_run_not_duplicated(isolated_client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["pr_number"] == 99
+
+
+def test_history_empty(isolated_client):
+    resp = isolated_client.get("/api/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "runs" in data
+    assert "stats" in data
+    assert data["runs"] == []
+    assert data["stats"]["total_runs"] == 0
+
+
+def test_history_runs_and_stats(isolated_client):
+    server._insert_event(server.ReportPayload(project="run-1", role="planner", event_type="start"))
+    server._insert_event(server.ReportPayload(project="run-1", role="builder", event_type="start"))
+    server._insert_event(server.ReportPayload(project="run-1", role="builder", event_type="done"))
+    server._insert_event(server.ReportPayload(project="run-2", role="builder", event_type="start"))
+    server._insert_event(server.ReportPayload(project="run-2", role="reviser", event_type="rework"))
+
+    resp = isolated_client.get("/api/history")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    runs = {r["project"]: r for r in data["runs"]}
+    assert "run-1" in runs
+    assert "run-2" in runs
+    assert runs["run-1"]["is_done"] is True
+    assert runs["run-1"]["has_rework"] is False
+    assert runs["run-2"]["is_done"] is False
+    assert runs["run-2"]["has_rework"] is True
+    assert runs["run-1"]["event_count"] == 3
+
+    stats = data["stats"]
+    assert stats["total_runs"] == 2
+    assert stats["rework_rate"] == 50.0
+    assert stats["success_rate"] == 50.0
+
+
+def test_history_project_timeline(isolated_client):
+    server._insert_event(server.ReportPayload(
+        project="timeline-proj", role="planner", event_type="start", payload={"task": "plan it"}
+    ))
+    server._insert_event(server.ReportPayload(
+        project="timeline-proj", role="builder", event_type="done"
+    ))
+
+    resp = isolated_client.get("/api/history/timeline-proj")
+    assert resp.status_code == 200
+    events = resp.json()
+    assert len(events) == 2
+    assert events[0]["event_type"] == "start"
+    assert events[0]["payload"] == {"task": "plan it"}
+    assert events[1]["event_type"] == "done"
+
+
+def test_history_project_not_found(isolated_client):
+    resp = isolated_client.get("/api/history/nonexistent-project")
+    assert resp.status_code == 200
+    assert resp.json() == []
