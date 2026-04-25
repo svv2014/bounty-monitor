@@ -214,3 +214,70 @@ def test_pipeline_run_not_duplicated(isolated_client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["pr_number"] == 99
+
+
+# ── Queue endpoint tests ──
+
+def test_queue_empty(isolated_client):
+    response = isolated_client.get("/api/queue")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_queue_post_accepted(isolated_client):
+    resp = isolated_client.post("/api/queue", json={
+        "project": "proj-q",
+        "items": [
+            {"ref": "42", "status": "queued", "priority": 1, "title": "Fix bug", "url": "https://example.com/42"},
+        ],
+    })
+    assert resp.status_code == 202
+    assert resp.json() == {"status": "accepted"}
+
+
+def test_queue_returns_items(isolated_client):
+    server._insert_queue_snapshot(server.QueueSnapshot(
+        project="proj-q",
+        items=[
+            server.QueueItem(ref="10", status="in-flight", priority=2, title="Feature A", url="https://example.com/10"),
+            server.QueueItem(ref="11", status="queued", priority=0, title="Feature B"),
+            server.QueueItem(ref="12", status="blocked", priority=3),
+        ],
+    ))
+    resp = isolated_client.get("/api/queue")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 3
+    statuses = {item["ref"]: item["status"] for item in data}
+    assert statuses["10"] == "in-flight"
+    assert statuses["11"] == "queued"
+    assert statuses["12"] == "blocked"
+
+
+def test_queue_project_filter(isolated_client):
+    server._insert_queue_snapshot(server.QueueSnapshot(
+        project="alpha",
+        items=[server.QueueItem(ref="1", status="queued", priority=0)],
+    ))
+    server._insert_queue_snapshot(server.QueueSnapshot(
+        project="beta",
+        items=[server.QueueItem(ref="2", status="queued", priority=0)],
+    ))
+    resp = isolated_client.get("/api/queue?project=alpha")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(item["project"] == "alpha" for item in data)
+    assert any(item["ref"] == "1" for item in data)
+
+
+def test_queue_priority_field(isolated_client):
+    server._insert_queue_snapshot(server.QueueSnapshot(
+        project="proj-p",
+        items=[server.QueueItem(ref="99", status="queued", priority=3, title="Critical")],
+    ))
+    resp = isolated_client.get("/api/queue")
+    assert resp.status_code == 200
+    data = resp.json()
+    item = next(i for i in data if i["ref"] == "99")
+    assert item["priority"] == 3
+    assert item["title"] == "Critical"

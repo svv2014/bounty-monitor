@@ -1,10 +1,10 @@
 import sqlite3
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional, Any
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -78,6 +78,17 @@ def init_db():
             total_bounty INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS work_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            ref TEXT NOT NULL,
+            status TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            title TEXT,
+            url TEXT,
+            created_at TEXT NOT NULL
+        );
     """)
     conn.commit()
     conn.close()
@@ -111,6 +122,19 @@ class VerdictPayload(BaseModel):
     model: Optional[str] = None
     points: int
     reason: Optional[str] = None
+
+
+class QueueItem(BaseModel):
+    ref: str
+    status: str
+    priority: int = 0
+    title: Optional[str] = None
+    url: Optional[str] = None
+
+
+class QueueSnapshot(BaseModel):
+    project: str
+    items: list[QueueItem]
 
 
 def _insert_event(data: ReportPayload):
@@ -210,6 +234,23 @@ def _insert_verdict(data: VerdictPayload):
     conn.close()
 
 
+def _insert_queue_snapshot(data: QueueSnapshot):
+    conn = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+
+    # Purge entries older than 24h
+    conn.execute("DELETE FROM work_queue WHERE created_at < ?", (cutoff,))
+
+    for item in data.items:
+        conn.execute(
+            "INSERT INTO work_queue (project, ref, status, priority, title, url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (data.project, item.ref, item.status, item.priority, item.title, item.url, now),
+        )
+    conn.commit()
+    conn.close()
+
+
 @app.post("/api/report", status_code=202)
 async def report(data: ReportPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(_insert_event, data)
@@ -220,6 +261,30 @@ async def report(data: ReportPayload, background_tasks: BackgroundTasks):
 async def verdict(data: VerdictPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(_insert_verdict, data)
     return {"status": "accepted"}
+
+
+@app.post("/api/queue", status_code=202)
+async def queue_snapshot(data: QueueSnapshot, background_tasks: BackgroundTasks):
+    background_tasks.add_task(_insert_queue_snapshot, data)
+    return {"status": "accepted"}
+
+
+@app.get("/api/queue")
+def get_queue(project: Optional[str] = Query(default=None)):
+    conn = get_db()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    if project:
+        rows = conn.execute(
+            "SELECT id, project, ref, status, priority, title, url, created_at FROM work_queue WHERE created_at >= ? AND project = ? ORDER BY priority DESC, created_at ASC",
+            (cutoff, project),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, project, ref, status, priority, title, url, created_at FROM work_queue WHERE created_at >= ? ORDER BY priority DESC, created_at ASC",
+            (cutoff,),
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @app.get("/api/board")
