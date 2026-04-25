@@ -448,9 +448,14 @@
       const ev = agentStatus[key] || {};
       const status = ev.event_type ? statusFromEvent(ev.event_type) : 'idle';
       const points = agentScores[key] || 0;
-      const task = ev.event_type
-        ? `${eventEmoji(ev.event_type)} ${ev.event_type}${ev.payload && typeof ev.payload === 'object' && ev.payload.task ? ': ' + ev.payload.task : ''}`
+
+      const issueTitle = ev.issue_title || (ev.payload && typeof ev.payload === 'object' && ev.payload.task) || '';
+      const taskLabel = ev.event_type
+        ? `${eventEmoji(ev.event_type)} ${escHtml(ev.event_type)}${issueTitle ? ': ' + escHtml(issueTitle) : ''}`
         : 'No activity yet';
+      const issueRef = ev.issue_url && isSafeUrl(ev.issue_url)
+        ? ` <a href="${escAttr(ev.issue_url)}" target="_blank" style="color:var(--accent2);font-size:0.7rem">#${ev.issue_number}</a>`
+        : '';
 
       const card = document.createElement('div');
       card.className = `agent-card ${status}`;
@@ -459,7 +464,7 @@
           <span class="agent-role">${ROLE_EMOJI[key] || '🤖'} ${role}</span>
           <span class="status-badge ${status}">${status}</span>
         </div>
-        <div class="agent-task">${escHtml(task)}</div>
+        <div class="agent-task">${taskLabel}${issueRef}</div>
         <div class="agent-bounty">⭐ ${points} pts</div>
       `;
       grid.appendChild(card);
@@ -522,16 +527,23 @@
       const emoji = eventEmoji(item.event_type);
       const role = (item.role || '').charAt(0).toUpperCase() + (item.role || '').slice(1);
       const when = timeAgo(item.created_at);
-      const detail = item.payload && typeof item.payload === 'object' && item.payload.task
-        ? ` — ${item.payload.task}`
-        : '';
+      const detail = item.detail || (item.payload && typeof item.payload === 'object' && item.payload.task) || '';
+
+      const issueLink = item.issue_url && isSafeUrl(item.issue_url)
+        ? `<a href="${escAttr(item.issue_url)}" target="_blank" style="color:var(--accent2)">issue #${item.issue_number}</a>`
+        : (item.issue_number ? `issue #${item.issue_number}` : '');
+      const prLink = item.pr_url && isSafeUrl(item.pr_url)
+        ? `<a href="${escAttr(item.pr_url)}" target="_blank" style="color:var(--accent2)">PR #${item.pr_number}</a>`
+        : (item.pr_number ? `PR #${item.pr_number}` : '');
+      const refs = [issueLink, prLink].filter(Boolean).join(' · ');
+
       return `
         <div class="feed-item">
           <span class="feed-emoji">${emoji}</span>
           <div>
             <span class="feed-role">${escHtml(role)}</span>
-            <span style="color:var(--text)"> ${escHtml(item.event_type)}${escHtml(detail)}</span>
-            <div class="feed-meta">${escHtml(item.project || '')} · ${escHtml(when)}</div>
+            <span style="color:var(--text)"> ${escHtml(item.event_type)}${detail ? ' — ' + escHtml(detail) : ''}</span>
+            <div class="feed-meta">${escHtml(item.project || '')}${refs ? ' · ' + refs : ''} · ${escHtml(when)}</div>
           </div>
         </div>
       `;
@@ -613,6 +625,14 @@
   // ── Utils ──
   function escHtml(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function escAttr(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function isSafeUrl(s) {
+    return /^https?:\/\//i.test(String(s || ''));
   }
 
   // ── Init ──

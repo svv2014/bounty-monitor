@@ -224,7 +224,13 @@ if [ "$BOUNTY_POINTS" -gt 0 ] && [ "$OUTCOME" = "clean" ]; then
 **Bounty bonus:** 🏆 ${BOUNTY_POINTS} pts split evenly (+${BONUS_EACH} each role)"
 fi
 
-COMMENT_BODY="## Judge Verdict — \`${OUTCOME}\`
+TOTAL_POINTS=$(( SCORE_PLANNER + SCORE_BUILDER + SCORE_REVIEWER + SCORE_TESTER ))
+_fmt_total() { [ "$1" -gt 0 ] 2>/dev/null && echo "+$1" || echo "$1"; }
+DISPLAY_TOTAL=$(_fmt_total "$TOTAL_POINTS")
+
+COMMENT_BODY="🏆 Judge: ${DISPLAY_TOTAL} pts total · Outcome: \`${OUTCOME}\` · ${REWORK_COUNT} rework cycle(s) · CI: ${CI_STATUS}
+
+## Judge Verdict — \`${OUTCOME}\`
 
 ${VERDICT_TEXT}
 
