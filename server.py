@@ -49,6 +49,35 @@ def init_db():
             verdict_count INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS issue_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            issue_number INTEGER NOT NULL,
+            pr_number INTEGER,
+            role TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            agent TEXT,
+            model TEXT,
+            duration_seconds INTEGER,
+            rework_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            issue_number INTEGER NOT NULL,
+            pr_number INTEGER,
+            title TEXT,
+            outcome TEXT,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            total_duration_seconds INTEGER,
+            rework_count INTEGER DEFAULT 0,
+            total_bounty INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     conn.commit()
     conn.close()
@@ -69,6 +98,11 @@ class ReportPayload(BaseModel):
     model: Optional[str] = None
     event_type: str
     payload: Optional[Any] = None
+    issue_number: Optional[int] = None
+    pr_number: Optional[int] = None
+    agent: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    rework_count: Optional[int] = None
 
 
 class VerdictPayload(BaseModel):
@@ -93,6 +127,54 @@ def _insert_event(data: ReportPayload):
             now,
         ),
     )
+
+    if data.issue_number is not None:
+        conn.execute(
+            """INSERT INTO issue_history
+               (project, issue_number, pr_number, role, event_type, agent, model,
+                duration_seconds, rework_count, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                data.project,
+                data.issue_number,
+                data.pr_number,
+                data.role,
+                data.event_type,
+                data.agent,
+                data.model,
+                data.duration_seconds,
+                data.rework_count or 0,
+                now,
+            ),
+        )
+
+        existing_run = conn.execute(
+            "SELECT id, rework_count FROM pipeline_runs WHERE project=? AND issue_number=?",
+            (data.project, data.issue_number),
+        ).fetchone()
+
+        if existing_run:
+            updates = ["completed_at=?"]
+            params: list = [now]
+            if data.pr_number is not None:
+                updates.append("pr_number=?")
+                params.append(data.pr_number)
+            if data.rework_count is not None:
+                updates.append("rework_count=rework_count+?")
+                params.append(data.rework_count)
+            params.append(existing_run["id"])
+            conn.execute(
+                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE id=?",
+                params,
+            )
+        else:
+            conn.execute(
+                """INSERT INTO pipeline_runs
+                   (project, issue_number, pr_number, started_at, completed_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (data.project, data.issue_number, data.pr_number, now, now, now),
+            )
+
     conn.commit()
     conn.close()
 
@@ -196,6 +278,66 @@ def get_verdicts():
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/history/{project}/{issue}")
+def get_history(project: str, issue: int):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, project, issue_number, pr_number, role, event_type, agent, model,
+                  duration_seconds, rework_count, created_at
+           FROM issue_history
+           WHERE project=? AND issue_number=?
+           ORDER BY id ASC""",
+        (project, issue),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/runs")
+def get_runs():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, project, issue_number, pr_number, title, outcome,
+                  started_at, completed_at, total_duration_seconds,
+                  rework_count, total_bounty, created_at
+           FROM pipeline_runs
+           ORDER BY id DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/runs/{project}")
+def get_runs_by_project(project: str):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, project, issue_number, pr_number, title, outcome,
+                  started_at, completed_at, total_duration_seconds,
+                  rework_count, total_bounty, created_at
+           FROM pipeline_runs
+           WHERE project=?
+           ORDER BY id DESC""",
+        (project,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/stats")
+def get_stats():
+    conn = get_db()
+    row = conn.execute(
+        """SELECT
+               COUNT(*) AS total_runs,
+               AVG(total_duration_seconds) AS avg_duration_seconds,
+               ROUND(100.0 * SUM(CASE WHEN outcome = 'clean' THEN 1 ELSE 0 END) / MAX(COUNT(*), 1), 2) AS success_rate,
+               ROUND(100.0 * SUM(CASE WHEN rework_count > 0 THEN 1 ELSE 0 END) / MAX(COUNT(*), 1), 2) AS rework_rate
+           FROM pipeline_runs"""
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
