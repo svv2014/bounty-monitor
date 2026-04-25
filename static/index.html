@@ -22,6 +22,9 @@
       --idle: #6b7590;
       --busy: #6366f1;
       --rework: #f59e0b;
+      --in-flight: #6366f1;
+      --queued: #22d3ee;
+      --blocked: #f87171;
     }
 
     body {
@@ -325,6 +328,162 @@
       padding: 16px;
     }
 
+    /* ── Queue section ── */
+    #queue-section {
+      grid-column: 1 / -1;
+      grid-row: 3;
+    }
+
+    .queue-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .queue-filter-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #queue-project-filter {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    #queue-project-filter:focus {
+      border-color: var(--accent);
+    }
+
+    .queue-groups {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .queue-group {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .queue-group-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .queue-group-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .queue-group-title.in-flight { color: var(--in-flight); }
+    .queue-group-title.queued    { color: var(--queued); }
+    .queue-group-title.blocked   { color: var(--blocked); }
+
+    .queue-count {
+      font-size: 0.68rem;
+      font-weight: 700;
+      background: var(--surface2);
+      color: var(--muted);
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+
+    .queue-items {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .queue-items::-webkit-scrollbar { width: 4px; }
+    .queue-items::-webkit-scrollbar-track { background: transparent; }
+    .queue-items::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .queue-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.77rem;
+    }
+
+    .queue-item:last-child { border-bottom: none; }
+
+    .queue-item-left { flex: 1; min-width: 0; }
+
+    .queue-item-ref {
+      font-weight: 600;
+      color: var(--accent2);
+      font-size: 0.72rem;
+      margin-bottom: 2px;
+    }
+
+    .queue-item-ref a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .queue-item-ref a:hover { text-decoration: underline; }
+
+    .queue-item-title {
+      color: var(--text);
+      font-size: 0.75rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .queue-item-meta {
+      color: var(--muted);
+      font-size: 0.68rem;
+      margin-top: 2px;
+    }
+
+    .queue-item-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .priority-badge {
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .priority-badge.p3 { background: #3b1a1a; color: var(--red); }
+    .priority-badge.p2 { background: #2d2310; color: var(--yellow); }
+    .priority-badge.p1 { background: #1a2230; color: var(--accent2); }
+    .priority-badge.p0 { background: var(--surface2); color: var(--muted); }
+
+    .wait-time {
+      font-size: 0.65rem;
+      color: var(--muted);
+    }
+
     @media (max-width: 900px) {
       main {
         grid-template-columns: 1fr;
@@ -332,6 +491,8 @@
       }
       #board-section { grid-column: 1; grid-row: 3; }
       #bottom-section { grid-column: 1; grid-row: 2; grid-template-columns: 1fr; }
+      #queue-section { grid-column: 1; grid-row: 4; }
+      .queue-groups { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -386,6 +547,40 @@
       <div class="scroll-inner" id="verdict-list"></div>
     </div>
   </div>
+
+  <!-- Work Queue -->
+  <section id="queue-section">
+    <div class="section-title">Work Queue</div>
+    <div class="queue-controls">
+      <span class="queue-filter-label">Project</span>
+      <select id="queue-project-filter">
+        <option value="">All projects</option>
+      </select>
+    </div>
+    <div class="queue-groups">
+      <div class="queue-group" id="queue-group-in-flight">
+        <div class="queue-group-header">
+          <span class="queue-group-title in-flight">In Flight</span>
+          <span class="queue-count" id="queue-count-in-flight">0</span>
+        </div>
+        <div class="queue-items" id="queue-items-in-flight"></div>
+      </div>
+      <div class="queue-group" id="queue-group-queued">
+        <div class="queue-group-header">
+          <span class="queue-group-title queued">Queued</span>
+          <span class="queue-count" id="queue-count-queued">0</span>
+        </div>
+        <div class="queue-items" id="queue-items-queued"></div>
+      </div>
+      <div class="queue-group" id="queue-group-blocked">
+        <div class="queue-group-header">
+          <span class="queue-group-title blocked">Blocked</span>
+          <span class="queue-count" id="queue-count-blocked">0</span>
+        </div>
+        <div class="queue-items" id="queue-items-blocked"></div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script>
@@ -564,23 +759,115 @@
     }).join('');
   }
 
+  // ── Queue state ──
+  let queueProjects = new Set();
+  let selectedQueueProject = '';
+
+  function priorityLabel(p) {
+    if (p >= 3) return { cls: 'p3', text: 'High' };
+    if (p === 2) return { cls: 'p2', text: 'Med' };
+    if (p === 1) return { cls: 'p1', text: 'Low' };
+    return { cls: 'p0', text: '—' };
+  }
+
+  function renderQueueGroup(containerId, countId, items) {
+    const container = document.getElementById(containerId);
+    const countEl = document.getElementById(countId);
+    countEl.textContent = items.length;
+    if (!items.length) {
+      container.innerHTML = '<div class="empty-state">Nothing here</div>';
+      return;
+    }
+    container.innerHTML = items.map(item => {
+      const pr = priorityLabel(item.priority || 0);
+      const wait = timeAgo(item.created_at);
+      const refDisplay = item.ref ? `#${item.ref}` : '—';
+      const titleHtml = item.title ? `<div class="queue-item-title">${escHtml(item.title)}</div>` : '';
+      const refHtml = item.url && item.url.startsWith('http')
+        ? `<a href="${escHtml(item.url)}" target="_blank" rel="noopener">${escHtml(refDisplay)}</a>`
+        : escHtml(refDisplay);
+      const roleHtml = item.assigned_role ? `<span style="color:var(--accent);font-weight:600"> · ${escHtml(item.assigned_role)}</span>` : '';
+      return `
+        <div class="queue-item">
+          <div class="queue-item-left">
+            <div class="queue-item-ref">${refHtml}</div>
+            ${titleHtml}
+            <div class="queue-item-meta">${escHtml(item.project || '')}${roleHtml}</div>
+          </div>
+          <div class="queue-item-right">
+            <span class="priority-badge ${pr.cls}">${pr.text}</span>
+            <span class="wait-time">${escHtml(wait)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderQueue(items) {
+    // Update project filter options
+    const newProjects = new Set(items.map(i => i.project).filter(Boolean));
+    let filterChanged = false;
+    for (const p of newProjects) {
+      if (!queueProjects.has(p)) { queueProjects.add(p); filterChanged = true; }
+    }
+    if (filterChanged) {
+      const sel = document.getElementById('queue-project-filter');
+      const current = sel.value;
+      sel.innerHTML = '<option value="">All projects</option>' +
+        [...queueProjects].sort().map(p => `<option value="${escHtml(p)}"${p === current ? ' selected' : ''}>${escHtml(p)}</option>`).join('');
+    }
+
+    // Filter by selected project
+    const filtered = selectedQueueProject
+      ? items.filter(i => i.project === selectedQueueProject)
+      : items;
+
+    const byStatus = { 'in-flight': [], queued: [], blocked: [] };
+    for (const item of filtered) {
+      const s = (item.status || 'queued').toLowerCase();
+      if (byStatus[s]) byStatus[s].push(item);
+      else byStatus['queued'].push(item);
+    }
+
+    // Sort each group by priority desc then wait time asc
+    for (const g of Object.values(byStatus)) {
+      g.sort((a, b) => (b.priority || 0) - (a.priority || 0) || new Date(a.created_at) - new Date(b.created_at));
+    }
+
+    renderQueueGroup('queue-items-in-flight', 'queue-count-in-flight', byStatus['in-flight']);
+    renderQueueGroup('queue-items-queued',    'queue-count-queued',    byStatus['queued']);
+    renderQueueGroup('queue-items-blocked',   'queue-count-blocked',   byStatus['blocked']);
+  }
+
+  document.getElementById('queue-project-filter').addEventListener('change', function() {
+    selectedQueueProject = this.value;
+    // Re-fetch to apply filter
+    fetchAll();
+  });
+
   // ── Fetch all data ──
   async function fetchAll() {
     try {
-      const [boardRes, feedRes, statusRes, verdictsRes] = await Promise.all([
+      const queueUrl = selectedQueueProject
+        ? `/api/queue?project=${encodeURIComponent(selectedQueueProject)}`
+        : '/api/queue';
+
+      const [boardRes, feedRes, statusRes, verdictsRes, queueRes] = await Promise.all([
         fetch('/api/board'),
         fetch('/api/feed'),
         fetch('/api/status'),
         fetch('/api/verdicts'),
+        fetch(queueUrl),
       ]);
 
-      if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok) return;
+      if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok || !queueRes.ok) return;
 
-      const [board, feed, status, verdicts] = await Promise.all([
+      const [board, feed, status, verdicts, queue] = await Promise.all([
         boardRes.json(),
         feedRes.json(),
         statusRes.json(),
         verdictsRes.json(),
+        queueRes.json(),
       ]);
 
       // Update agent status map
@@ -593,6 +880,7 @@
       renderAgents();
       renderFeed(feed);
       renderVerdicts(verdicts);
+      renderQueue(queue);
 
       document.getElementById('last-update').textContent = 'Updated ' + timeAgo(new Date().toISOString());
     } catch (e) {

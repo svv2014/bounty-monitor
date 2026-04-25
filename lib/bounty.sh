@@ -34,3 +34,25 @@ bounty_report() {
         >/dev/null 2>&1 &
     disown "$!" 2>/dev/null || true
 }
+
+# bounty_report_queue — fire-and-forget POST of a work-queue snapshot.
+#
+# Usage: bounty_report_queue <project> <items_json>
+#   project     project slug
+#   items_json  JSON array of queue items:
+#               [{"ref":"<ref>","status":"queued|in-flight|blocked",
+#                 "priority":<int>,"title":"<str>","url":"<str>"}]
+bounty_report_queue() {
+    local project="${1:-}" items_json="${2:-[]}"
+    local payload
+    payload="{\"project\":\"${project}\",\"items\":${items_json}}"
+    curl -sf \
+        --max-time 3 \
+        --connect-timeout 2 \
+        -X POST \
+        -H 'Content-Type: application/json' \
+        -d "${payload}" \
+        "${BOUNTY_MONITOR_URL}/api/queue" \
+        >/dev/null 2>&1 &
+    disown "$!" 2>/dev/null || true
+}
