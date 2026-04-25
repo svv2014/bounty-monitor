@@ -80,6 +80,25 @@ def init_db():
         );
     """)
     conn.commit()
+    # Migration: add rich context columns if they don't exist yet
+    new_columns = [
+        ("issue_number", "INTEGER"),
+        ("issue_title", "TEXT"),
+        ("pr_number", "INTEGER"),
+        ("issue_url", "TEXT"),
+        ("pr_url", "TEXT"),
+        ("repo", "TEXT"),
+        ("agent", "TEXT"),
+        ("duration_seconds", "INTEGER"),
+        ("detail", "TEXT"),
+        ("rework_count", "INTEGER DEFAULT 0"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.close()
 
 
@@ -98,11 +117,21 @@ class ReportPayload(BaseModel):
     model: Optional[str] = None
     event_type: str
     payload: Optional[Any] = None
+    # Rich context fields
+    slug: Optional[str] = None
+    repo: Optional[str] = None
     issue_number: Optional[int] = None
+    issue_title: Optional[str] = None
+    issue_url: Optional[str] = None
     pr_number: Optional[int] = None
+    pr_url: Optional[str] = None
     agent: Optional[str] = None
     duration_seconds: Optional[int] = None
+    detail: Optional[str] = None
     rework_count: Optional[int] = None
+    trigger_judge: Optional[bool] = None
+    timestamp: Optional[str] = None
+    ref: Optional[str] = None  # legacy compat
 
 
 class VerdictPayload(BaseModel):
@@ -117,7 +146,11 @@ def _insert_event(data: ReportPayload):
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
-        "INSERT INTO events (project, role, model, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        """INSERT INTO events (
+            project, role, model, event_type, payload, created_at,
+            issue_number, issue_title, pr_number, issue_url, pr_url,
+            repo, agent, duration_seconds, detail, rework_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
             data.role,
@@ -125,6 +158,16 @@ def _insert_event(data: ReportPayload):
             data.event_type,
             json.dumps(data.payload) if data.payload else None,
             now,
+            data.issue_number,
+            data.issue_title,
+            data.pr_number,
+            data.issue_url,
+            data.pr_url,
+            data.repo,
+            data.agent,
+            data.duration_seconds,
+            data.detail,
+            data.rework_count,
         ),
     )
 
@@ -236,7 +279,10 @@ def board():
 def feed():
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, project, role, model, event_type, payload, created_at FROM events ORDER BY id DESC LIMIT 50"
+        """SELECT id, project, role, model, event_type, payload, created_at,
+               issue_number, issue_title, pr_number, issue_url, pr_url,
+               repo, agent, duration_seconds, detail, rework_count
+           FROM events ORDER BY id DESC LIMIT 50"""
     ).fetchall()
     conn.close()
     result = []
@@ -251,9 +297,10 @@ def feed():
 @app.get("/api/status")
 def status():
     conn = get_db()
-    # Latest event per project+role
     rows = conn.execute("""
-        SELECT e.project, e.role, e.model, e.event_type, e.payload, e.created_at
+        SELECT e.project, e.role, e.model, e.event_type, e.payload, e.created_at,
+               e.issue_number, e.issue_title, e.pr_number, e.issue_url, e.pr_url,
+               e.repo, e.agent, e.duration_seconds, e.detail, e.rework_count
         FROM events e
         INNER JOIN (
             SELECT project, role, MAX(id) AS max_id FROM events GROUP BY project, role
