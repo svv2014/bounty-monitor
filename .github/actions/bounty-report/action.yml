@@ -25,18 +25,25 @@ runs:
   steps:
     - name: Post bounty event
       shell: bash
+      env:
+        BM_PROJECT: ${{ inputs.project }}
+        BM_ROLE: ${{ inputs.role }}
+        BM_EVENT_TYPE: ${{ inputs.event_type }}
+        BM_MODEL: ${{ inputs.model }}
+        BM_URL: ${{ inputs.bounty_monitor_url }}
       run: |
         PAYLOAD=$(python3 -c "
-        import json, sys
+        import json, os
         d = {
-          'project': sys.argv[1],
-          'role':    sys.argv[2],
-          'event_type': sys.argv[3],
+          'project': os.environ['BM_PROJECT'],
+          'role':    os.environ['BM_ROLE'],
+          'event_type': os.environ['BM_EVENT_TYPE'],
         }
-        if sys.argv[4]:
-            d['model'] = sys.argv[4]
+        model = os.environ.get('BM_MODEL', '')
+        if model:
+            d['model'] = model
         print(json.dumps(d))
-        " "${{ inputs.project }}" "${{ inputs.role }}" "${{ inputs.event_type }}" "${{ inputs.model }}")
+        ")
 
         curl -sf \
           --max-time 3 \
@@ -44,5 +51,5 @@ runs:
           -X POST \
           -H 'Content-Type: application/json' \
           -d "$PAYLOAD" \
-          "${{ inputs.bounty_monitor_url }}/api/report" \
+          "${BM_URL}/api/report" \
           >/dev/null 2>&1 || true

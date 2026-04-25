@@ -288,7 +288,7 @@ def feed():
     limit = _config.get("retention", {}).get("feed_limit", 50)
     conn = get_db()
     rows = conn.execute(
-        f"SELECT id, project, role, model, event_type, payload, created_at FROM events ORDER BY id DESC LIMIT {int(limit)}"
+        f"SELECT id, project, role, model, event_type, payload, created_at FROM events ORDER BY id DESC LIMIT {int(limit or 50)}"
     ).fetchall()
     conn.close()
     result = []
@@ -326,7 +326,7 @@ def get_verdicts():
     limit = _config.get("retention", {}).get("verdict_limit", 50)
     conn = get_db()
     rows = conn.execute(
-        f"SELECT id, project, role, model, points, reason, created_at FROM verdicts ORDER BY id DESC LIMIT {int(limit)}"
+        f"SELECT id, project, role, model, points, reason, created_at FROM verdicts ORDER BY id DESC LIMIT {int(limit or 50)}"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

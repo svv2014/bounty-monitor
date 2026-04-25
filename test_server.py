@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import pytest
@@ -87,6 +88,7 @@ def test_board_cumulative_scores():
 
 @pytest.fixture()
 def isolated_client(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "_load_config", lambda path=None: {})
     monkeypatch.setattr(server, "DB_PATH", str(tmp_path / "test.db"))
     with TestClient(server.app) as c:
         yield c
@@ -214,3 +216,129 @@ def test_pipeline_run_not_duplicated(isolated_client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["pr_number"] == 99
+
+
+# ── Tests for /api/config/roles ──
+
+def test_config_roles_empty(isolated_client):
+    response = isolated_client.get("/api/config/roles")
+    assert response.status_code == 200
+    data = response.json()
+    assert "roles" in data
+    assert isinstance(data["roles"], list)
+
+
+def test_config_roles_from_config(isolated_client, monkeypatch):
+    monkeypatch.setitem(server._config, "scoring", {"roles": ["builder", "reviewer", "deployer"]})
+    response = isolated_client.get("/api/config/roles")
+    assert response.status_code == 200
+    assert response.json()["roles"] == ["builder", "reviewer", "deployer"]
+
+
+# ── Tests for /api/webhook/github ──
+
+def _github_sig(secret: str, body: bytes) -> str:
+    import hmac as _hmac, hashlib
+    mac = _hmac.new(secret.encode(), body, hashlib.sha256)
+    return "sha256=" + mac.hexdigest()
+
+
+def test_webhook_github_no_secret(isolated_client):
+    payload = json.dumps({"repository": {"full_name": "org/repo"}, "sender": {"login": "user"}})
+    response = isolated_client.post(
+        "/api/webhook/github",
+        content=payload,
+        headers={"Content-Type": "application/json", "X-GitHub-Event": "push"},
+    )
+    assert response.status_code == 202
+    assert response.json() == {"status": "accepted"}
+
+
+def test_webhook_github_valid_signature(isolated_client, monkeypatch):
+    secret = "test-secret"
+    monkeypatch.setenv("BOUNTY_WEBHOOK_SECRET", secret)
+    payload = json.dumps({"repository": {"full_name": "org/repo"}, "sender": {"login": "user"}}).encode()
+    sig = _github_sig(secret, payload)
+    response = isolated_client.post(
+        "/api/webhook/github",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-GitHub-Event": "pull_request",
+            "X-Hub-Signature-256": sig,
+        },
+    )
+    assert response.status_code == 202
+
+
+def test_webhook_github_invalid_signature(isolated_client, monkeypatch):
+    monkeypatch.setenv("BOUNTY_WEBHOOK_SECRET", "real-secret")
+    payload = json.dumps({"repository": {"full_name": "org/repo"}}).encode()
+    response = isolated_client.post(
+        "/api/webhook/github",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": "sha256=badhash",
+        },
+    )
+    assert response.status_code == 401
+
+
+# ── Tests for /api/webhook/gitlab ──
+
+def test_webhook_gitlab_no_secret(isolated_client):
+    payload = json.dumps({"project": {"path_with_namespace": "org/repo"}, "user": {"username": "dev"}})
+    response = isolated_client.post(
+        "/api/webhook/gitlab",
+        content=payload,
+        headers={"Content-Type": "application/json", "X-Gitlab-Event": "Push Hook"},
+    )
+    assert response.status_code == 202
+    assert response.json() == {"status": "accepted"}
+
+
+def test_webhook_gitlab_valid_token(isolated_client, monkeypatch):
+    secret = "gitlab-token"
+    monkeypatch.setenv("BOUNTY_WEBHOOK_SECRET", secret)
+    payload = json.dumps({"project": {"path_with_namespace": "org/repo"}, "user": {"username": "dev"}}).encode()
+    response = isolated_client.post(
+        "/api/webhook/gitlab",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Gitlab-Event": "Push Hook",
+            "X-Gitlab-Token": secret,
+        },
+    )
+    assert response.status_code == 202
+
+
+def test_webhook_gitlab_invalid_token(isolated_client, monkeypatch):
+    monkeypatch.setenv("BOUNTY_WEBHOOK_SECRET", "real-token")
+    payload = json.dumps({}).encode()
+    response = isolated_client.post(
+        "/api/webhook/gitlab",
+        content=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-Gitlab-Token": "wrong-token",
+        },
+    )
+    assert response.status_code == 401
+
+
+# ── Test null feed_limit doesn't crash ──
+
+def test_feed_with_null_limit(isolated_client, monkeypatch):
+    monkeypatch.setitem(server._config, "retention", {"feed_limit": None})
+    response = isolated_client.get("/api/feed")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_verdicts_with_null_limit(isolated_client, monkeypatch):
+    monkeypatch.setitem(server._config, "retention", {"verdict_limit": None})
+    response = isolated_client.get("/api/verdicts")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
