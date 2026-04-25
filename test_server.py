@@ -214,3 +214,90 @@ def test_pipeline_run_not_duplicated(isolated_client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["pr_number"] == 99
+
+
+# ── Retention / cleanup tests ─────────────────────────────────────────────────
+
+def test_admin_cleanup_deletes_old_events(isolated_client):
+    # Insert an event with a very old timestamp directly
+    import sqlite3
+    db_path = server.DB_PATH
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO events (project, role, model, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        ("old-proj", "builder", None, "started", None, "2000-01-01T00:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.post("/api/admin/cleanup?retention_days=90")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["deleted_events"] >= 1
+    assert data["retention_days"] == 90
+
+
+def test_admin_cleanup_keeps_scores(isolated_client):
+    server._insert_verdict(server.VerdictPayload(
+        project="keep-proj", role="tester", model=None, points=3, reason="test"
+    ))
+    isolated_client.post("/api/admin/cleanup?retention_days=0")
+    resp = isolated_client.get("/api/board")
+    data = resp.json()
+    entry = next((r for r in data if r["project"] == "keep-proj"), None)
+    assert entry is not None, "scores must survive cleanup"
+
+
+def test_prune_old_events_removes_stale():
+    old_cutoff = server.BOUNTY_RETENTION_DAYS
+    conn = server.get_db()
+    conn.execute(
+        "INSERT INTO events (project, role, model, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        ("stale", "planner", None, "done", None, "1999-06-15T12:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+    deleted = server._prune_old_events(retention_days=1)
+    assert deleted >= 1
+
+
+# ── Export tests ───────────────────────────────────────────────────────────────
+
+def test_export_events_csv(isolated_client):
+    server._insert_event(server.ReportPayload(project="exp-p", role="builder", event_type="start"))
+    resp = isolated_client.get("/api/export/events?format=csv")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    lines = resp.text.strip().splitlines()
+    assert lines[0] == "id,project,role,model,event_type,payload,created_at"
+    assert len(lines) >= 2
+
+
+def test_export_events_csv_date_filter(isolated_client):
+    server._insert_event(server.ReportPayload(project="filter-p", role="builder", event_type="done"))
+    resp = isolated_client.get("/api/export/events?format=csv&from=2000-01-01&to=2099-12-31")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+
+
+def test_export_runs_csv(isolated_client):
+    resp = isolated_client.get("/api/export/runs?format=csv")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    lines = resp.text.strip().splitlines()
+    assert lines[0] == "id,project,role,model,status,started_at,finished_at"
+
+
+def test_export_board_json(isolated_client):
+    server._insert_verdict(server.VerdictPayload(
+        project="board-exp", role="reviewer", model=None, points=7, reason="nice"
+    ))
+    resp = isolated_client.get("/api/export/board?format=json")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "exported_at" in data
+    assert "board" in data
+    assert isinstance(data["board"], list)
+    entry = next((r for r in data["board"] if r["project"] == "board-exp"), None)
+    assert entry is not None
+    assert entry["total_points"] == 7
