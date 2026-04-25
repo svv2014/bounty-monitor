@@ -81,3 +81,38 @@ def test_board_cumulative_scores():
     entry = next(r for r in data if r["project"] == "proj-d" and r["role"] == "planner")
     assert entry["total_points"] == 15
     assert entry["verdict_count"] == 2
+
+
+# ── Fixture-based tests for dashboard and /api/verdicts ──
+
+@pytest.fixture()
+def isolated_client(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "DB_PATH", str(tmp_path / "test.db"))
+    with TestClient(server.app) as c:
+        yield c
+
+
+def test_get_root_returns_dashboard_html(isolated_client):
+    response = isolated_client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Bounty Monitor" in response.text
+
+
+def test_api_verdicts_empty(isolated_client):
+    response = isolated_client.get("/api/verdicts")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_api_verdicts_after_post(isolated_client):
+    isolated_client.post("/api/verdict", json={
+        "project": "test", "role": "builder", "points": 10, "reason": "good work"
+    })
+    response = isolated_client.get("/api/verdicts")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["role"] == "builder"
+    assert data[0]["points"] == 10
+    assert data[0]["reason"] == "good work"

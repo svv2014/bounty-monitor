@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, Any
 
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 DB_PATH = "bounty.db"
@@ -185,3 +186,16 @@ def status():
             entry["payload"] = json.loads(entry["payload"])
         result.append(entry)
     return result
+
+
+@app.get("/api/verdicts")
+def get_verdicts():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, project, role, model, points, reason, created_at FROM verdicts ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
