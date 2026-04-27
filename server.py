@@ -132,11 +132,13 @@ BOUNTY_POINTS = {
     "rework_done":  2,
     "review_done":  2,
     "merge_done":   2,
+    "po_done":      2,
     "qa_pass":      1,
     "qa_done":      1,
     "dev_failed":  -1,
     "rework_failed": -1,
     "review_failed": -1,
+    "po_failed":   -1,
 }
 
 
