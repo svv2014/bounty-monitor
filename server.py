@@ -26,6 +26,9 @@ def init_db():
             role TEXT NOT NULL,
             model TEXT,
             event_type TEXT NOT NULL,
+            issue_number INTEGER,
+            pr_number INTEGER,
+            detail TEXT,
             payload TEXT,
             created_at TEXT NOT NULL
         );
@@ -79,6 +82,16 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    # Migrate existing events table if new columns are missing
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+    for col, defn in [
+        ("issue_number", "INTEGER"),
+        ("pr_number", "INTEGER"),
+        ("detail", "TEXT"),
+    ]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
+
     conn.commit()
     conn.close()
 
@@ -101,6 +114,7 @@ class ReportPayload(BaseModel):
     issue_number: Optional[int] = None
     pr_number: Optional[int] = None
     agent: Optional[str] = None
+    detail: Optional[str] = None
     duration_seconds: Optional[int] = None
     rework_count: Optional[int] = None
 
@@ -117,12 +131,17 @@ def _insert_event(data: ReportPayload):
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
-        "INSERT INTO events (project, role, model, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        """INSERT INTO events
+           (project, role, model, event_type, issue_number, pr_number, detail, payload, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
             data.role,
             data.model,
             data.event_type,
+            data.issue_number,
+            data.pr_number,
+            data.detail,
             json.dumps(data.payload) if data.payload else None,
             now,
         ),
@@ -232,11 +251,32 @@ def board():
     return [dict(r) for r in rows]
 
 
+@app.get("/api/active")
+def active():
+    """Currently running workers: latest event per project+role is a *_start within last 4h."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT e.project, e.role, e.model, e.event_type, e.issue_number, e.pr_number,
+               e.detail, e.created_at
+        FROM events e
+        INNER JOIN (
+            SELECT project, role, MAX(id) AS max_id FROM events GROUP BY project, role
+        ) latest ON e.id = latest.max_id
+        WHERE e.event_type LIKE '%_start'
+          AND e.created_at >= datetime('now', '-4 hours')
+        ORDER BY e.created_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 @app.get("/api/feed")
 def feed():
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, project, role, model, event_type, payload, created_at FROM events ORDER BY id DESC LIMIT 50"
+        """SELECT id, project, role, model, event_type, issue_number, pr_number,
+                  detail, payload, created_at
+           FROM events ORDER BY id DESC LIMIT 50"""
     ).fetchall()
     conn.close()
     result = []
@@ -251,9 +291,9 @@ def feed():
 @app.get("/api/status")
 def status():
     conn = get_db()
-    # Latest event per project+role
     rows = conn.execute("""
-        SELECT e.project, e.role, e.model, e.event_type, e.payload, e.created_at
+        SELECT e.project, e.role, e.model, e.event_type, e.issue_number, e.pr_number,
+               e.detail, e.payload, e.created_at
         FROM events e
         INNER JOIN (
             SELECT project, role, MAX(id) AS max_id FROM events GROUP BY project, role
