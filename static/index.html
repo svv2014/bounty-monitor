@@ -479,6 +479,12 @@
     @media (max-width: 900px) {
       .charts-grid { grid-template-columns: 1fr; }
     }
+
+    a.gh-link {
+      color: var(--accent2);
+      text-decoration: none;
+    }
+    a.gh-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -772,9 +778,10 @@
   }
 
   // ── State ──
-  let projectScores = {};  // project -> total_points
-  let activeWorkers = [];  // from /api/active
-  let statusEntries = [];  // from /api/status
+  let projectScores = {};   // project -> total_points
+  let activeWorkers = [];   // from /api/active
+  let statusEntries = [];   // from /api/status
+  let projectRepoMap = {};  // project -> "owner/repo"
 
   // ── Render project cards ──
   function renderAgents() {
@@ -878,8 +885,11 @@
       return;
     }
     tbody.innerHTML = workers.map(w => {
-      const task = w.issue_number ? `#${w.issue_number}` : w.pr_number ? `PR#${w.pr_number}` : '—';
-      const taskLink = w.issue_number || w.pr_number ? task : '—';
+      const taskHtml = w.issue_number
+        ? ghLink(w.project, w.issue_number, 'issue')
+        : w.pr_number
+          ? ghLink(w.project, w.pr_number, 'pull')
+          : '—';
       const since = w.created_at ? new Date(w.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
       const dur = w.created_at ? duration(w.created_at) : '—';
       const role = (w.role || '').charAt(0).toUpperCase() + (w.role || '').slice(1);
@@ -889,7 +899,7 @@
           <td><span class="worker-dot"></span></td>
           <td class="worker-project">${escHtml(w.project || '—')}</td>
           <td class="worker-role">${escHtml(role)}</td>
-          <td class="worker-task">${escHtml(taskLink)}${detail}</td>
+          <td class="worker-task">${taskHtml}${detail}</td>
           <td><span class="worker-event">${escHtml(w.event_type)}</span></td>
           <td class="worker-duration">${escHtml(since)}</td>
           <td class="worker-duration">${escHtml(dur)}</td>
@@ -919,14 +929,18 @@
       const emoji = eventEmoji(item.event_type);
       const role = (item.role || '').charAt(0).toUpperCase() + (item.role || '').slice(1);
       const when = timeAgo(item.created_at);
-      const taskRef = item.issue_number ? ` #${item.issue_number}` : item.pr_number ? ` PR#${item.pr_number}` : '';
-      const detail = item.detail ? ` — ${item.detail}` : '';
+      const taskHtml = item.issue_number
+        ? ' ' + ghLink(item.project, item.issue_number, 'issue')
+        : item.pr_number
+          ? ' ' + ghLink(item.project, item.pr_number, 'pull')
+          : '';
+      const detail = item.detail ? ` — ${escHtml(item.detail)}` : '';
       return `
         <div class="feed-item">
           <span class="feed-emoji">${emoji}</span>
           <div>
             <span class="feed-role">${escHtml(role)}</span>
-            <span style="color:var(--text)"> ${escHtml(item.event_type)}${escHtml(taskRef)}${escHtml(detail)}</span>
+            <span style="color:var(--text)"> ${escHtml(item.event_type)}${taskHtml}${detail}</span>
             <div class="feed-meta">${escHtml(item.project || '')} · ${escHtml(when)}</div>
           </div>
         </div>
@@ -944,7 +958,11 @@
     list.innerHTML = items.map(item => {
       const role = (item.role || '').charAt(0).toUpperCase() + (item.role || '').slice(1);
       const when = timeAgo(item.completed_at);
-      const task = item.issue_number ? `#${item.issue_number}` : item.pr_number ? `PR#${item.pr_number}` : '';
+      const taskHtml = item.issue_number
+        ? ' ' + ghLink(item.project, item.issue_number, 'issue')
+        : item.pr_number
+          ? ' ' + ghLink(item.project, item.pr_number, 'pull')
+          : '';
       const dur = item.duration_seconds != null ? fmtDur(item.duration_seconds) : null;
       const pts = item.points != null ? item.points : null;
       const ptsClass = pts == null ? '' : pts > 0 ? 'pos' : 'neg';
@@ -956,7 +974,7 @@
             <span class="verdict-role">${failed ? '❌' : '✅'} ${escHtml(item.project || '')} · ${escHtml(role)}${model}</span>
             ${pts != null ? `<span class="verdict-pts ${ptsClass}">${pts > 0 ? '+' : ''}${pts} pts</span>` : ''}
           </div>
-          <div style="font-size:0.75rem;color:var(--accent2);margin:2px 0">${escHtml(item.event_type)}${task ? ' ' + escHtml(task) : ''}</div>
+          <div style="font-size:0.75rem;color:var(--accent2);margin:2px 0">${escHtml(item.event_type)}${taskHtml}</div>
           <div class="feed-meta">${escHtml(when)}${dur ? ' · ' + escHtml(dur) : ''}</div>
         </div>
       `;
@@ -999,7 +1017,7 @@
   async function fetchAll() {
     try {
       const [boardRes, feedRes, statusRes, verdictsRes, activeRes, historyRes,
-             activityRes, stagesRes, reworkRes] = await Promise.all([
+             activityRes, stagesRes, reworkRes, projectsRes] = await Promise.all([
         fetch('/api/board'),
         fetch('/api/feed'),
         fetch('/api/status'),
@@ -1009,13 +1027,14 @@
         fetch('/api/stats/activity'),
         fetch('/api/stats/stages'),
         fetch('/api/stats/rework'),
+        fetch('/api/projects'),
       ]);
 
       if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok ||
           !activeRes.ok || !historyRes.ok) return;
 
       const [board, feed, status, verdicts, active, hist,
-             activity, stages, rework] = await Promise.all([
+             activity, stages, rework, projects] = await Promise.all([
         boardRes.json(),
         feedRes.json(),
         statusRes.json(),
@@ -1025,7 +1044,12 @@
         activityRes.ok ? activityRes.json() : Promise.resolve([]),
         stagesRes.ok   ? stagesRes.json()   : Promise.resolve([]),
         reworkRes.ok   ? reworkRes.json()   : Promise.resolve([]),
+        projectsRes.ok ? projectsRes.json() : Promise.resolve([]),
       ]);
+
+      if (projects.length) {
+        projectRepoMap = Object.fromEntries(projects.map(p => [p.project, p.repo]));
+      }
 
       // Update state for project cards
       activeWorkers = active;
@@ -1058,6 +1082,14 @@
   // ── Utils ──
   function escHtml(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function ghLink(project, number, type = 'issue') {
+    if (number == null) return '—';
+    const repo = projectRepoMap[project];
+    if (!repo) return `#${number}`;
+    const url = `https://github.com/${repo}/${type}s/${number}`;
+    return `<a class="gh-link" href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">#${number}</a>`;
   }
 
   // ── Init ──

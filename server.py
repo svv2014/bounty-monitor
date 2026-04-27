@@ -127,6 +127,16 @@ class VerdictPayload(BaseModel):
     reason: Optional[str] = None
 
 
+PROJECTS = {
+    'ppl':               'svv2014/ppl-study',
+    'boba-event':        'svv2014/boba-event',
+    'asdlc':             'svv2014/asdlc',
+    'bounty':            'svv2014/bounty-monitor',
+    'vrefm-classifier':  'svv2014/vrefm-classifier',
+    'pa-scanner':        'svv2014/pa-scanner',
+    'ntc':               'svv2014/NanoTraderCopilot',
+}
+
 BOUNTY_POINTS = {
     "dev_done":     3,
     "rework_done":  2,
@@ -463,6 +473,117 @@ def get_stats():
     return dict(row) if row else {}
 
 
+@app.get("/api/stats/timeline/pr/{project}/{pr_number}")
+def get_timeline_by_pr(project: str, pr_number: int):
+    """Look up issue_number from pipeline_runs then return the same timeline payload."""
+    from fastapi import HTTPException
+
+    conn = get_db()
+    run_row = conn.execute(
+        "SELECT issue_number FROM pipeline_runs WHERE project=? AND pr_number=? ORDER BY id DESC LIMIT 1",
+        (project, pr_number),
+    ).fetchone()
+    conn.close()
+
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="PR not found")
+
+    return get_timeline(project, run_row["issue_number"])
+
+
+@app.get("/api/stats/timeline/{project}/{issue}")
+def get_timeline(project: str, issue: int):
+    """Stage-by-stage timeline for a single issue."""
+    conn = get_db()
+
+    summary_row = conn.execute(
+        """SELECT title, outcome, total_duration_seconds, rework_count, pr_number
+           FROM pipeline_runs
+           WHERE project=? AND issue_number=?
+           ORDER BY id DESC LIMIT 1""",
+        (project, issue),
+    ).fetchone()
+
+    history_rows = conn.execute(
+        """SELECT role, event_type, created_at
+           FROM issue_history
+           WHERE project=? AND issue_number=?
+           ORDER BY created_at ASC""",
+        (project, issue),
+    ).fetchall()
+
+    conn.close()
+
+    events = _build_timeline_events(history_rows)
+
+    summary: dict = {}
+    if summary_row:
+        summary = dict(summary_row)
+
+    return {"summary": summary, "events": events}
+
+
+def _build_timeline_events(history_rows) -> list:
+    """Pair *_start and *_done/*_failed rows into stage entries."""
+    # key: (role, prefix) -> start row
+    pending: dict = {}
+    result = []
+
+    for row in history_rows:
+        role = row["role"]
+        event_type = row["event_type"]
+        created_at = row["created_at"]
+
+        if event_type.endswith("_start"):
+            prefix = event_type[: -len("_start")]
+            pending[(role, prefix)] = created_at
+        elif event_type.endswith("_done") or event_type.endswith("_failed"):
+            if event_type.endswith("_done"):
+                prefix = event_type[: -len("_done")]
+                status = "done"
+            else:
+                prefix = event_type[: -len("_failed")]
+                status = "failed"
+            started_at = pending.pop((role, prefix), None)
+            duration_seconds = None
+            if started_at:
+                try:
+                    from datetime import datetime
+                    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            t_start = datetime.strptime(started_at.replace("+00:00", "+0000"), fmt)
+                            t_end = datetime.strptime(created_at.replace("+00:00", "+0000"), fmt)
+                            duration_seconds = int((t_end - t_start).total_seconds())
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+            result.append({
+                "role": role,
+                "event_type": f"{prefix}_{status}",
+                "status": status,
+                "started_at": started_at,
+                "completed_at": created_at,
+                "duration_seconds": duration_seconds,
+            })
+
+    # Any still-pending starts are running
+    for (role, prefix), started_at in pending.items():
+        result.append({
+            "role": role,
+            "event_type": f"{prefix}_start",
+            "status": "running",
+            "started_at": started_at,
+            "completed_at": None,
+            "duration_seconds": None,
+        })
+
+    # Sort by started_at
+    result.sort(key=lambda e: e["started_at"] or "")
+    return result
+
+
 @app.get("/api/stats/stages")
 def get_stats_stages():
     """Avg duration per pipeline stage by pairing *_start and *_done events."""
@@ -522,6 +643,15 @@ def get_stats_rework():
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@app.get("/api/projects")
+def get_projects():
+    conn = get_db()
+    rows = conn.execute("SELECT DISTINCT project FROM events").fetchall()
+    conn.close()
+    active = {r["project"] for r in rows}
+    return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
