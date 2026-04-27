@@ -461,4 +461,65 @@ def get_stats():
     return dict(row) if row else {}
 
 
+@app.get("/api/stats/stages")
+def get_stats_stages():
+    """Avg duration per pipeline stage by pairing *_start and *_done events."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            REPLACE(d.event_type, '_done', '') AS stage,
+            ROUND(AVG(
+                (julianday(d.created_at) - julianday(s.created_at)) * 86400
+            ), 2) AS avg_seconds,
+            COUNT(*) AS count
+        FROM events d
+        JOIN events s ON s.project = d.project
+            AND s.role = d.role
+            AND s.event_type = REPLACE(d.event_type, '_done', '_start')
+            AND s.id = (
+                SELECT MAX(s2.id) FROM events s2
+                WHERE s2.project = d.project AND s2.role = d.role
+                  AND s2.event_type = REPLACE(d.event_type, '_done', '_start')
+                  AND s2.id < d.id
+            )
+        WHERE d.event_type LIKE '%_done'
+        GROUP BY stage
+        ORDER BY stage
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/stats/activity")
+def get_stats_activity():
+    """Daily event counts per project for the last 14 days."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT DATE(created_at) as date, project, COUNT(*) as n
+        FROM events
+        WHERE created_at >= datetime('now', '-14 days')
+        GROUP BY DATE(created_at), project
+        ORDER BY date
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/stats/rework")
+def get_stats_rework():
+    """Per-project rework_start and review_done counts for rework rate cards."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            project,
+            SUM(CASE WHEN event_type = 'rework_start' THEN 1 ELSE 0 END) AS rework_starts,
+            SUM(CASE WHEN event_type = 'review_done'  THEN 1 ELSE 0 END) AS review_dones
+        FROM events
+        GROUP BY project
+        ORDER BY project
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

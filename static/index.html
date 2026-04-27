@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bounty Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -409,6 +410,75 @@
       #board-section { grid-column: 1; grid-row: 3; }
       #bottom-section { grid-column: 1; grid-row: 2; grid-template-columns: 1fr; }
     }
+
+    /* ── Charts section ── */
+    #charts-section {
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 24px 24px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .chart-canvas-wrap {
+      position: relative;
+      height: 240px;
+    }
+
+    /* Rework stat cards */
+    .rework-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .rework-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .rework-project {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rework-rate {
+      font-size: 1.4rem;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .rework-detail {
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .charts-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -491,6 +561,35 @@
   </div>
 </main>
 
+<section id="charts-section">
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="section-title">Events / Day / Project (14d)</div>
+      <div class="chart-canvas-wrap">
+        <canvas id="chart-activity"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">Total Points by Project</div>
+      <div class="chart-canvas-wrap">
+        <canvas id="chart-board"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">Avg Minutes per Stage</div>
+      <div class="chart-canvas-wrap">
+        <canvas id="chart-stages"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="section-title">Rework Rate by Project</div>
+      <div class="rework-grid" id="rework-cards">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <script>
   const ROLES = ['Planner', 'Builder', 'Reviewer', 'Tester', 'Reviser'];
 
@@ -536,6 +635,140 @@
   function shortModel(model) {
     if (!model) return '—';
     return model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+  }
+
+  // ── Chart colour palette (matches CSS vars) ──
+  const C_ACCENT = '#6366f1';
+  const C_GREEN  = '#34d399';
+  const C_YELLOW = '#fbbf24';
+  const C_RED    = '#f87171';
+  const PALETTE  = [C_ACCENT, C_GREEN, C_YELLOW, C_RED, '#22d3ee', '#a78bfa', '#fb923c', '#4ade80'];
+
+  const CHART_TICK  = '#6b7590';
+  const CHART_GRID  = '#2a2f3d';
+
+  function chartScaleDefaults() {
+    return {
+      ticks: { color: CHART_TICK, font: { size: 10 } },
+      grid:  { color: CHART_GRID },
+    };
+  }
+
+  // ── Chart instances ──
+  let chartActivity = null;
+  let chartBoard    = null;
+  let chartStages   = null;
+
+  function initCharts() {
+    Chart.defaults.color = CHART_TICK;
+
+    chartActivity = new Chart(document.getElementById('chart-activity'), {
+      type: 'bar',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: CHART_TICK, font: { size: 10 }, boxWidth: 12 } } },
+        scales: {
+          x: { ...chartScaleDefaults(), stacked: true },
+          y: { ...chartScaleDefaults(), stacked: true },
+        },
+      },
+    });
+
+    chartBoard = new Chart(document.getElementById('chart-board'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'Points', data: [], backgroundColor: C_ACCENT }] },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: chartScaleDefaults(),
+          y: chartScaleDefaults(),
+        },
+      },
+    });
+
+    chartStages = new Chart(document.getElementById('chart-stages'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'Avg min', data: [], backgroundColor: C_GREEN }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: chartScaleDefaults(),
+          y: { ...chartScaleDefaults(), title: { display: true, text: 'minutes', color: CHART_TICK } },
+        },
+      },
+    });
+  }
+
+  // Generate last N day strings "YYYY-MM-DD"
+  function lastNDays(n) {
+    const days = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+    return days;
+  }
+
+  function updateCharts(activityData, boardData, stagesData, reworkData) {
+    // ── Activity: stacked bar events/day/project ──
+    const days = lastNDays(14);
+    const projects = [...new Set(activityData.map(r => r.project))].sort();
+    const actIdx = {};
+    for (const r of activityData) actIdx[`${r.date}|${r.project}`] = r.n;
+
+    chartActivity.data.labels   = days.map(d => d.slice(5));  // MM-DD
+    chartActivity.data.datasets = projects.map((proj, i) => ({
+      label: proj,
+      data:  days.map(d => actIdx[`${d}|${proj}`] || 0),
+      backgroundColor: PALETTE[i % PALETTE.length],
+    }));
+    chartActivity.update();
+
+    // ── Board: horizontal bar total points per project ──
+    const projPts = {};
+    for (const r of boardData) {
+      const p = r.project || '';
+      projPts[p] = (projPts[p] || 0) + r.total_points;
+    }
+    const projEntries = Object.entries(projPts).sort((a, b) => b[1] - a[1]);
+    chartBoard.data.labels              = projEntries.map(e => e[0]);
+    chartBoard.data.datasets[0].data   = projEntries.map(e => e[1]);
+    chartBoard.data.datasets[0].backgroundColor = projEntries.map((_, i) => PALETTE[i % PALETTE.length]);
+    chartBoard.update();
+
+    // ── Stages: avg minutes per stage ──
+    chartStages.data.labels             = stagesData.map(r => r.stage);
+    chartStages.data.datasets[0].data  = stagesData.map(r => +(r.avg_seconds / 60).toFixed(1));
+    chartStages.update();
+
+    // ── Rework rate stat cards ──
+    const cards = document.getElementById('rework-cards');
+    if (!reworkData.length) {
+      cards.innerHTML = '<div class="empty-state">No data yet</div>';
+      return;
+    }
+    cards.innerHTML = reworkData.map(r => {
+      const rate = r.review_dones > 0
+        ? (r.rework_starts / r.review_dones * 100).toFixed(1)
+        : null;
+      const colour = rate === null
+        ? 'var(--muted)'
+        : +rate > 30 ? C_RED : +rate > 10 ? C_YELLOW : C_GREEN;
+      return `
+        <div class="rework-card">
+          <div class="rework-project">${escHtml(r.project)}</div>
+          <div class="rework-rate" style="color:${colour}">${rate !== null ? rate + '%' : '—'}</div>
+          <div class="rework-detail">${r.rework_starts} rework / ${r.review_dones} review</div>
+        </div>`;
+    }).join('');
   }
 
   // ── State ──
@@ -765,24 +998,33 @@
   // ── Fetch all data ──
   async function fetchAll() {
     try {
-      const [boardRes, feedRes, statusRes, verdictsRes, activeRes, historyRes] = await Promise.all([
+      const [boardRes, feedRes, statusRes, verdictsRes, activeRes, historyRes,
+             activityRes, stagesRes, reworkRes] = await Promise.all([
         fetch('/api/board'),
         fetch('/api/feed'),
         fetch('/api/status'),
         fetch('/api/verdicts'),
         fetch('/api/active'),
         fetch('/api/history'),
+        fetch('/api/stats/activity'),
+        fetch('/api/stats/stages'),
+        fetch('/api/stats/rework'),
       ]);
 
-      if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok || !activeRes.ok || !historyRes.ok) return;
+      if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok ||
+          !activeRes.ok || !historyRes.ok) return;
 
-      const [board, feed, status, verdicts, active, hist] = await Promise.all([
+      const [board, feed, status, verdicts, active, hist,
+             activity, stages, rework] = await Promise.all([
         boardRes.json(),
         feedRes.json(),
         statusRes.json(),
         verdictsRes.json(),
         activeRes.json(),
         historyRes.json(),
+        activityRes.ok ? activityRes.json() : Promise.resolve([]),
+        stagesRes.ok   ? stagesRes.json()   : Promise.resolve([]),
+        reworkRes.ok   ? reworkRes.json()   : Promise.resolve([]),
       ]);
 
       // Update state for project cards
@@ -795,6 +1037,7 @@
       renderFeed(feed);
       renderHistory(hist);
       renderVerdicts(verdicts);
+      updateCharts(activity, board, stages, rework);
 
       document.getElementById('last-update').textContent = 'Updated ' + timeAgo(new Date().toISOString());
     } catch (e) {
@@ -818,6 +1061,7 @@
   }
 
   // ── Init ──
+  initCharts();
   fetchAll();
   setInterval(fetchAll, 5000);
 </script>
