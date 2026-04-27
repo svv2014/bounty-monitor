@@ -730,7 +730,7 @@
       data:  days.map(d => actIdx[`${d}|${proj}`] || 0),
       backgroundColor: PALETTE[i % PALETTE.length],
     }));
-    chartActivity.update();
+    chartActivity.update('none');
 
     // ── Board: horizontal bar total points per project ──
     const projPts = {};
@@ -742,12 +742,12 @@
     chartBoard.data.labels              = projEntries.map(e => e[0]);
     chartBoard.data.datasets[0].data   = projEntries.map(e => e[1]);
     chartBoard.data.datasets[0].backgroundColor = projEntries.map((_, i) => PALETTE[i % PALETTE.length]);
-    chartBoard.update();
+    chartBoard.update('none');
 
     // ── Stages: avg minutes per stage ──
     chartStages.data.labels             = stagesData.map(r => r.stage);
     chartStages.data.datasets[0].data  = stagesData.map(r => +(r.avg_seconds / 60).toFixed(1));
-    chartStages.update();
+    chartStages.update('none');
 
     // ── Rework rate stat cards ──
     const cards = document.getElementById('rework-cards');
