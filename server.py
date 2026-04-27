@@ -1,14 +1,19 @@
-import sqlite3
+import csv
+import io
 import json
-from datetime import datetime, timezone
+import os
+import sqlite3
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional, Any
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Query
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 DB_PATH = "bounty.db"
+BOUNTY_RETENTION_DAYS = int(os.environ.get("BOUNTY_RETENTION_DAYS", "90"))
 
 
 def get_db():
@@ -81,6 +86,16 @@ def init_db():
             total_bounty INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS handler_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            role TEXT NOT NULL,
+            model TEXT,
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT
+        );
     """)
     # Migrate existing events table if new columns are missing
     cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
@@ -96,9 +111,20 @@ def init_db():
     conn.close()
 
 
+def _prune_old_events(retention_days: int = BOUNTY_RETENTION_DAYS) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    conn = get_db()
+    cur = conn.execute("DELETE FROM events WHERE created_at < ?", (cutoff,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _prune_old_events()
     yield
 
 
@@ -678,6 +704,84 @@ def get_projects():
     conn.close()
     active = {r["project"] for r in rows}
     return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
+
+
+# ── Admin ──────────────────────────────────────────────────────────────────────
+
+@app.post("/api/admin/cleanup")
+def admin_cleanup(retention_days: int = Query(default=BOUNTY_RETENTION_DAYS)):
+    deleted = _prune_old_events(retention_days)
+    return {"deleted_events": deleted, "retention_days": retention_days}
+
+
+# ── Export ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/export/events")
+def export_events(
+    format: str = Query(default="csv"),
+    from_: Optional[str] = Query(default=None, alias="from"),
+    to: Optional[str] = Query(default=None),
+):
+    conn = get_db()
+    query = "SELECT id, project, role, model, event_type, payload, created_at FROM events WHERE 1=1"
+    params: list = []
+    if from_:
+        query += " AND created_at >= ?"
+        params.append(from_)
+    if to:
+        query += " AND created_at <= ?"
+        params.append(to)
+    query += " ORDER BY id ASC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "project", "role", "model", "event_type", "payload", "created_at"])
+    for r in rows:
+        writer.writerow([r["id"], r["project"], r["role"], r["model"], r["event_type"], r["payload"], r["created_at"]])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=events.csv"},
+    )
+
+
+@app.get("/api/export/runs")
+def export_runs(format: str = Query(default="csv")):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, project, role, model, status, started_at, finished_at FROM handler_runs ORDER BY id ASC"
+    ).fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "project", "role", "model", "status", "started_at", "finished_at"])
+    for r in rows:
+        writer.writerow([r["id"], r["project"], r["role"], r["model"], r["status"], r["started_at"], r["finished_at"]])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=handler_runs.csv"},
+    )
+
+
+@app.get("/api/export/board")
+def export_board(format: str = Query(default="json")):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT project, role, model, total_points, verdict_count, updated_at FROM scores ORDER BY total_points DESC"
+    ).fetchall()
+    conn.close()
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "board": [dict(r) for r in rows],
+    }
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
