@@ -447,7 +447,7 @@
   </section>
 
   <section id="agents-section">
-    <div class="section-title">Agent Status</div>
+    <div class="section-title">Project Status</div>
     <div class="agent-grid" id="agent-grid"></div>
   </section>
 
@@ -539,31 +539,51 @@
   }
 
   // ── State ──
-  let agentScores = {};   // role -> total_points (from board)
-  let agentStatus = {};   // role -> latest event entry
+  let projectScores = {};  // project -> total_points
+  let activeWorkers = [];  // from /api/active
+  let statusEntries = [];  // from /api/status
 
-  // ── Render agents ──
+  // ── Render project cards ──
   function renderAgents() {
     const grid = document.getElementById('agent-grid');
     grid.innerHTML = '';
-    for (const role of ROLES) {
-      const key = role.toLowerCase();
-      const ev = agentStatus[key] || {};
-      const status = ev.event_type ? statusFromEvent(ev.event_type) : 'idle';
-      const points = agentScores[key] || 0;
-      const task = ev.event_type
-        ? `${eventEmoji(ev.event_type)} ${ev.event_type}${ev.payload && typeof ev.payload === 'object' && ev.payload.task ? ': ' + ev.payload.task : ''}`
-        : 'No activity yet';
 
+    // Build project set from status + active
+    const projects = new Map();
+    for (const e of statusEntries) {
+      if (!e.project) continue;
+      if (!projects.has(e.project)) projects.set(e.project, { latest: e, active: [] });
+      else if (e.id > projects.get(e.project).latest.id) projects.get(e.project).latest = e;
+    }
+    for (const w of activeWorkers) {
+      if (!w.project) continue;
+      if (!projects.has(w.project)) projects.set(w.project, { latest: w, active: [] });
+      projects.get(w.project).active.push(w);
+    }
+    if (!projects.size) {
+      grid.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">No project data yet</div>';
+      return;
+    }
+    for (const [proj, info] of [...projects.entries()].sort()) {
+      const isActive = info.active.length > 0;
+      const status = isActive ? 'busy' : 'idle';
+      const pts = projectScores[proj] || 0;
+      const activeLines = info.active.map(w =>
+        `<div style="font-size:0.72rem;color:#818cf8;margin-top:2px">▶ ${escHtml(w.role)} ${escHtml(w.event_type)}${w.issue_number ? ' #'+w.issue_number : w.pr_number ? ' PR#'+w.pr_number : ''}</div>`
+      ).join('');
+      const lastEv = info.latest;
+      const lastLine = !isActive && lastEv
+        ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:2px">${eventEmoji(lastEv.event_type)} ${escHtml(lastEv.event_type)} · ${escHtml(timeAgo(lastEv.created_at))}</div>`
+        : '';
       const card = document.createElement('div');
       card.className = `agent-card ${status}`;
       card.innerHTML = `
         <div class="agent-header">
-          <span class="agent-role">${ROLE_EMOJI[key] || '🤖'} ${role}</span>
+          <span class="agent-role">📦 ${escHtml(proj)}</span>
           <span class="status-badge ${status}">${status}</span>
         </div>
-        <div class="agent-task">${escHtml(task)}</div>
-        <div class="agent-bounty">⭐ ${points} pts</div>
+        <div class="agent-task">${isActive ? activeLines : lastLine || '<span style="color:var(--muted)">No activity yet</span>'}</div>
+        <div class="agent-bounty">⭐ ${pts} pts</div>
       `;
       grid.appendChild(card);
     }
@@ -580,9 +600,12 @@
       byRole[k].verdicts += row.verdict_count;
     }
     const roleRows = Object.values(byRole).sort((a, b) => b.pts - a.pts);
-    // Store for agent cards
-    agentScores = {};
-    for (const r of roleRows) agentScores[(r.role || '').toLowerCase()] = r.pts;
+    // Build project scores for project cards
+    projectScores = {};
+    for (const row of data) {
+      const p = row.project || '';
+      projectScores[p] = (projectScores[p] || 0) + row.total_points;
+    }
 
     const roleTbody = document.getElementById('board-role-body');
     roleTbody.innerHTML = roleRows.length ? roleRows.map((r, i) => `
@@ -762,11 +785,9 @@
         historyRes.json(),
       ]);
 
-      // Update agent status map
-      agentStatus = {};
-      for (const entry of status) {
-        agentStatus[(entry.role || '').toLowerCase()] = entry;
-      }
+      // Update state for project cards
+      activeWorkers = active;
+      statusEntries = status;
 
       renderActive(active);
       renderBoard(board);
