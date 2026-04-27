@@ -504,13 +504,33 @@ def get_timeline(project: str, issue: int):
         (project, issue),
     ).fetchone()
 
-    history_rows = conn.execute(
-        """SELECT role, event_type, created_at
-           FROM issue_history
-           WHERE project=? AND issue_number=?
-           ORDER BY created_at ASC""",
+    # Collect all related PR numbers (issue_history may link PRs)
+    pr_numbers = [r[0] for r in conn.execute(
+        "SELECT DISTINCT pr_number FROM issue_history WHERE project=? AND issue_number=? AND pr_number IS NOT NULL",
         (project, issue),
-    ).fetchall()
+    ).fetchall()]
+    if summary_row and summary_row["pr_number"]:
+        pr_numbers.append(summary_row["pr_number"])
+    pr_numbers = list(set(pr_numbers))
+
+    # Build timeline from events table — covers both issue-scoped and PR-scoped events
+    if pr_numbers:
+        placeholders = ",".join("?" * len(pr_numbers))
+        params = [project, issue] + pr_numbers
+        history_rows = conn.execute(
+            f"""SELECT role, event_type, created_at FROM events
+               WHERE project=?
+                 AND (issue_number=? OR pr_number IN ({placeholders}))
+               ORDER BY created_at ASC""",
+            params,
+        ).fetchall()
+    else:
+        history_rows = conn.execute(
+            """SELECT role, event_type, created_at FROM events
+               WHERE project=? AND issue_number=?
+               ORDER BY created_at ASC""",
+            (project, issue),
+        ).fetchall()
 
     conn.close()
 
