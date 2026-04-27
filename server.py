@@ -127,6 +127,49 @@ class VerdictPayload(BaseModel):
     reason: Optional[str] = None
 
 
+BOUNTY_POINTS = {
+    "dev_done":     3,
+    "rework_done":  2,
+    "review_done":  2,
+    "merge_done":   2,
+    "qa_pass":      1,
+    "qa_done":      1,
+    "dev_failed":  -1,
+    "rework_failed": -1,
+    "review_failed": -1,
+}
+
+
+def _auto_bounty(conn, data: "ReportPayload", now: str):
+    """Auto-insert a verdict when a terminal event is received."""
+    pts = BOUNTY_POINTS.get(data.event_type)
+    if pts is None:
+        return
+    reason = f"auto: {data.event_type}"
+    if data.issue_number:
+        reason += f" issue #{data.issue_number}"
+    elif data.pr_number:
+        reason += f" PR #{data.pr_number}"
+    conn.execute(
+        "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (data.project, data.role, data.model, pts, reason, now),
+    )
+    existing = conn.execute(
+        "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
+        (data.project, data.role, data.model),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
+            (existing["total_points"] + pts, existing["verdict_count"] + 1, now, existing["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            (data.project, data.role, data.model, pts, now),
+        )
+
+
 def _insert_event(data: ReportPayload):
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
@@ -194,6 +237,7 @@ def _insert_event(data: ReportPayload):
                 (data.project, data.issue_number, data.pr_number, now, now, now),
             )
 
+    _auto_bounty(conn, data, now)
     conn.commit()
     conn.close()
 
@@ -247,6 +291,43 @@ def board():
     rows = conn.execute(
         "SELECT project, role, model, total_points, verdict_count FROM scores ORDER BY total_points DESC"
     ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/history")
+def history(limit: int = 50):
+    """Completed jobs: *_done/*_pass events paired with their *_start for duration."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            d.id, d.project, d.role, d.model, d.event_type,
+            d.issue_number, d.pr_number, d.detail, d.created_at AS completed_at,
+            s.created_at AS started_at,
+            CASE
+                WHEN s.created_at IS NOT NULL
+                THEN CAST((julianday(d.created_at) - julianday(s.created_at)) * 86400 AS INTEGER)
+                ELSE NULL
+            END AS duration_seconds,
+            v.points
+        FROM events d
+        LEFT JOIN events s ON s.project = d.project
+            AND s.role = d.role
+            AND s.event_type = REPLACE(d.event_type, '_done', '_start')
+            AND s.id = (
+                SELECT MAX(s2.id) FROM events s2
+                WHERE s2.project = d.project AND s2.role = d.role
+                  AND s2.event_type = REPLACE(d.event_type, '_done', '_start')
+                  AND s2.id < d.id
+            )
+        LEFT JOIN verdicts v ON v.project = d.project AND v.role = d.role
+            AND v.reason LIKE '%auto: ' || d.event_type || '%'
+            AND v.created_at >= d.created_at
+            AND v.id = (SELECT MIN(v2.id) FROM verdicts v2 WHERE v2.project=d.project AND v2.role=d.role AND v2.created_at >= d.created_at AND v2.reason LIKE '%auto: ' || d.event_type || '%')
+        WHERE d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed'
+        ORDER BY d.id DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
