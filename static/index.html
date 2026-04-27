@@ -485,6 +485,122 @@
       text-decoration: none;
     }
     a.gh-link:hover { text-decoration: underline; }
+
+    /* ── Timeline links (open drawer) ── */
+    .timeline-link {
+      color: var(--accent2);
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .timeline-link:hover { text-decoration: underline; }
+
+    /* ── Timeline Drawer ── */
+    .drawer-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+    }
+    .drawer-backdrop.open { display: block; }
+
+    #timeline-drawer {
+      position: fixed;
+      top: 0;
+      right: -420px;
+      width: 380px;
+      height: 100vh;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.25s ease;
+      overflow: hidden;
+    }
+    #timeline-drawer.open { right: 0; }
+
+    .drawer-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .drawer-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+      word-break: break-word;
+    }
+    .drawer-subtitle { font-size: 0.72rem; color: var(--muted); }
+
+    #drawer-close {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.82rem;
+      padding: 4px 8px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    #drawer-close:hover { color: var(--text); border-color: var(--muted); }
+
+    .drawer-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+    .drawer-meta-item { color: var(--muted); }
+
+    .drawer-stages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .drawer-stages::-webkit-scrollbar { width: 4px; }
+    .drawer-stages::-webkit-scrollbar-track { background: transparent; }
+    .drawer-stages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .stage-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+    }
+    .stage-row:last-child { border-bottom: none; }
+    .stage-icon { font-size: 1rem; flex-shrink: 0; width: 20px; text-align: center; }
+    .stage-body { flex: 1; min-width: 0; }
+    .stage-role { font-weight: 600; color: var(--accent); margin-right: 5px; }
+    .stage-event { color: var(--muted); font-size: 0.72rem; }
+    .stage-time { text-align: right; font-size: 0.68rem; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+    .stage-dur { color: var(--accent2); font-weight: 600; }
+
+    .drawer-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .drawer-gh-link {
+      color: var(--accent);
+      font-size: 0.78rem;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .drawer-gh-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -595,6 +711,20 @@
     </div>
   </div>
 </section>
+
+<div id="drawer-backdrop" class="drawer-backdrop"></div>
+<div id="timeline-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+  <div class="drawer-header">
+    <div>
+      <div id="drawer-title" class="drawer-title">—</div>
+      <div id="drawer-subtitle" class="drawer-subtitle">—</div>
+    </div>
+    <button id="drawer-close" aria-label="Close drawer">✕</button>
+  </div>
+  <div class="drawer-meta" id="drawer-meta"></div>
+  <div class="drawer-stages" id="drawer-stages"></div>
+  <div class="drawer-footer" id="drawer-footer"></div>
+</div>
 
 <script>
   const ROLES = ['Planner', 'Builder', 'Reviewer', 'Tester', 'Reviser'];
@@ -885,11 +1015,7 @@
       return;
     }
     tbody.innerHTML = workers.map(w => {
-      const taskHtml = w.issue_number
-        ? ghLink(w.project, w.issue_number, 'issue')
-        : w.pr_number
-          ? ghLink(w.project, w.pr_number, 'pull')
-          : '—';
+      const taskHtml = timelineLink(w.project, w.issue_number, w.pr_number);
       const since = w.created_at ? new Date(w.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
       const dur = w.created_at ? duration(w.created_at) : '—';
       const role = (w.role || '').charAt(0).toUpperCase() + (w.role || '').slice(1);
@@ -929,10 +1055,10 @@
       const emoji = eventEmoji(item.event_type);
       const role = (item.role || '').charAt(0).toUpperCase() + (item.role || '').slice(1);
       const when = timeAgo(item.created_at);
-      const taskHtml = item.issue_number
-        ? ' ' + ghLink(item.project, item.issue_number, 'issue')
-        : item.pr_number
-          ? ' ' + ghLink(item.project, item.pr_number, 'pull')
+      const taskHtml = item.issue_number != null
+        ? ' ' + timelineLink(item.project, item.issue_number, null)
+        : item.pr_number != null
+          ? ' ' + timelineLink(item.project, null, item.pr_number)
           : '';
       const detail = item.detail ? ` — ${escHtml(item.detail)}` : '';
       return `
@@ -958,10 +1084,10 @@
     list.innerHTML = items.map(item => {
       const role = (item.role || '').charAt(0).toUpperCase() + (item.role || '').slice(1);
       const when = timeAgo(item.completed_at);
-      const taskHtml = item.issue_number
-        ? ' ' + ghLink(item.project, item.issue_number, 'issue')
-        : item.pr_number
-          ? ' ' + ghLink(item.project, item.pr_number, 'pull')
+      const taskHtml = item.issue_number != null
+        ? ' ' + timelineLink(item.project, item.issue_number, null)
+        : item.pr_number != null
+          ? ' ' + timelineLink(item.project, null, item.pr_number)
           : '';
       const dur = item.duration_seconds != null ? fmtDur(item.duration_seconds) : null;
       const pts = item.points != null ? item.points : null;
@@ -1092,10 +1218,157 @@
     return `<a class="gh-link" href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">#${number}</a>`;
   }
 
+  // ── Timeline link helper (opens drawer) ──
+  function timelineLink(project, issue, pr) {
+    if (issue != null) {
+      return `<a class="timeline-link" href="#issue/${encodeURIComponent(project)}/${issue}" data-project="${escHtml(project)}" data-issue="${issue}">#${issue}</a>`;
+    }
+    if (pr != null) {
+      return `<a class="timeline-link" href="#pr/${encodeURIComponent(project)}/${pr}" data-project="${escHtml(project)}" data-pr="${pr}">PR#${pr}</a>`;
+    }
+    return '—';
+  }
+
+  // ── Timeline Drawer ──
+  const drawerEl   = document.getElementById('timeline-drawer');
+  const backdropEl = document.getElementById('drawer-backdrop');
+
+  function openDrawer(project, issue, pr) {
+    const url = issue != null
+      ? `/api/stats/timeline/${encodeURIComponent(project)}/${issue}`
+      : `/api/stats/timeline/pr/${encodeURIComponent(project)}/${pr}`;
+
+    document.getElementById('drawer-title').textContent    = issue != null ? `#${issue}` : `PR#${pr}`;
+    document.getElementById('drawer-subtitle').textContent = project;
+    document.getElementById('drawer-meta').innerHTML       = '<span style="color:var(--muted)">Loading…</span>';
+    document.getElementById('drawer-stages').innerHTML     = '';
+    document.getElementById('drawer-footer').innerHTML     = '';
+
+    drawerEl.classList.add('open');
+    backdropEl.classList.add('open');
+    drawerEl.setAttribute('tabindex', '-1');
+    drawerEl.focus();
+
+    if (issue != null) {
+      history.pushState(null, '', `#issue/${encodeURIComponent(project)}/${issue}`);
+    }
+
+    fetch(url)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => populateDrawer(data, project, issue, pr))
+      .catch(() => {
+        document.getElementById('drawer-meta').innerHTML =
+          '<span style="color:var(--red)">Failed to load timeline</span>';
+      });
+  }
+
+  function closeDrawer() {
+    drawerEl.classList.remove('open');
+    backdropEl.classList.remove('open');
+    if (window.location.hash) {
+      history.pushState(null, '', window.location.pathname + window.location.search);
+    }
+  }
+
+  function populateDrawer(data, project, issue, pr) {
+    const sum      = data.summary || {};
+    const issueNum = data.issue_number != null ? data.issue_number : issue;
+    const prNum    = sum.pr_number    != null ? sum.pr_number    : pr;
+    const title    = sum.title || (issueNum != null ? `Issue #${issueNum}` : `PR #${prNum}`);
+
+    document.getElementById('drawer-title').textContent    = title;
+    document.getElementById('drawer-subtitle').textContent =
+      `${project}${issueNum != null ? ' · #' + issueNum : ''}${prNum ? ' · PR#' + prNum : ''}`;
+
+    const outcomeClass = sum.outcome === 'clean' ? 'pos' : sum.outcome ? 'neg' : 'zero';
+    const outcomeLabel = sum.outcome || 'in progress';
+    const dur          = sum.total_duration_seconds != null ? fmtDur(sum.total_duration_seconds) : null;
+    const reworkCount  = sum.rework_count || 0;
+
+    document.getElementById('drawer-meta').innerHTML = [
+      `<span class="verdict-pts ${outcomeClass}">${escHtml(outcomeLabel)}</span>`,
+      dur ? `<span class="drawer-meta-item">⏱ ${escHtml(dur)}</span>` : '',
+      `<span class="drawer-meta-item">🔄 ${reworkCount} rework</span>`,
+    ].filter(Boolean).join('');
+
+    const stagesEl = document.getElementById('drawer-stages');
+    const events   = data.events || [];
+    if (!events.length) {
+      stagesEl.innerHTML = '<div class="empty-state">No stage data yet</div>';
+    } else {
+      stagesEl.innerHTML = events.map(s => {
+        const icon   = s.status === 'done' ? '✅' : s.status === 'failed' ? '❌' : '▶';
+        const role   = (s.role || '').charAt(0).toUpperCase() + (s.role || '').slice(1);
+        const time   = s.started_at
+          ? new Date(s.started_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
+          : '';
+        const durMin = s.duration_seconds != null
+          ? (s.duration_seconds / 60).toFixed(1) + 'm'
+          : '';
+        return `
+          <div class="stage-row">
+            <span class="stage-icon">${icon}</span>
+            <div class="stage-body">
+              <span class="stage-role">${escHtml(role)}</span>
+              <span class="stage-event">${escHtml(s.event_type)}</span>
+            </div>
+            <div class="stage-time">
+              ${time   ? `<div>${escHtml(time)}</div>`               : ''}
+              ${durMin ? `<div class="stage-dur">${escHtml(durMin)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    const repo   = data.repo;
+    const footer = document.getElementById('drawer-footer');
+    if (repo && issueNum != null) {
+      footer.innerHTML = `<a class="drawer-gh-link" href="https://github.com/${escHtml(repo)}/issues/${issueNum}" target="_blank" rel="noopener">View on GitHub ↗</a>`;
+    } else if (repo && prNum) {
+      footer.innerHTML = `<a class="drawer-gh-link" href="https://github.com/${escHtml(repo)}/pull/${prNum}" target="_blank" rel="noopener">View on GitHub ↗</a>`;
+    } else {
+      footer.innerHTML = '';
+    }
+  }
+
+  // Click delegation for .timeline-link
+  document.addEventListener('click', e => {
+    const link = e.target.closest('.timeline-link');
+    if (link) {
+      e.preventDefault();
+      const project = link.dataset.project;
+      const issue   = link.dataset.issue != null && link.dataset.issue !== ''
+        ? parseInt(link.dataset.issue, 10) : null;
+      const pr      = link.dataset.pr    != null && link.dataset.pr    !== ''
+        ? parseInt(link.dataset.pr, 10)    : null;
+      openDrawer(project, issue, pr);
+    }
+  });
+
+  // ESC closes drawer
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeDrawer();
+  });
+
+  backdropEl.addEventListener('click', closeDrawer);
+  document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+
+  // Hash-based navigation
+  function checkHash() {
+    const m = window.location.hash.match(/^#issue\/([^/]+)\/(\d+)$/);
+    if (m) openDrawer(decodeURIComponent(m[1]), parseInt(m[2], 10), null);
+  }
+  window.addEventListener('hashchange', () => {
+    const m = window.location.hash.match(/^#issue\/([^/]+)\/(\d+)$/);
+    if (m) openDrawer(decodeURIComponent(m[1]), parseInt(m[2], 10), null);
+    else if (!window.location.hash) closeDrawer();
+  });
+
   // ── Init ──
   initCharts();
   fetchAll();
   setInterval(fetchAll, 5000);
+  checkHash();
 </script>
 </body>
 </html>

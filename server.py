@@ -520,7 +520,13 @@ def get_timeline(project: str, issue: int):
     if summary_row:
         summary = dict(summary_row)
 
-    return {"summary": summary, "events": events}
+    return {
+        "issue_number": issue,
+        "project": project,
+        "repo": PROJECTS.get(project, project),
+        "summary": summary,
+        "events": events,
+    }
 
 
 def _build_timeline_events(history_rows) -> list:
